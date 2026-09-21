@@ -97,7 +97,7 @@ git push -u origin main
 ## 동아리 이름·문구 바꾸기
 
 - 동아리 이름: [`config.js`](config.js) 의 `CLUB.nameKo` / `CLUB.nameEn`
-- 사용 목적 항목(합주/강습/…): [`index.html`](index.html) 의 `#purpose` `<option>` 들과
+- 사용 목적 항목(합주/레슨/…): [`index.html`](index.html) 의 `#purpose` `<option>` 들과
   [`app.js`](app.js) 의 `modal.opt*` 번역 문구
 - 색상·여백: [`styles.css`](styles.css) 맨 위 `:root` 의 CSS 변수
 

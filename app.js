@@ -45,7 +45,7 @@ const I18N = {
         "modal.phCount": "예: 5",
         "modal.labelPurpose": "사용 목적",
         "modal.optEnsemble": "🎸 합주",
-        "modal.optClass": "📚 강습",
+        "modal.optClass": "📚 레슨",
         "modal.optMeeting": "🗓️ 정기회의",
         "modal.optEtc": "✨ 기타",
         "modal.btnCancel": "취소",
