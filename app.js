@@ -112,7 +112,7 @@ const I18N = {
         "admin.popupBlocked": "로그인 팝업이 차단되었습니다. 팝업을 허용하거나 Chrome·Safari에서 열어주세요.",
         "admin.inApp": "카카오톡 등 앱 내 브라우저에서는 구글 로그인이 막혀 있습니다. Chrome·Safari에서 열어주세요.",
         "admin.domain": "이 주소가 Firebase에 승인되지 않았습니다. (Authentication > 설정 > 승인된 도메인)",
-        "admin.notEnabled": "Firebase에서 구글 로그인이 켜져 있지 않습니다. (Authentication > 로그인 방법)",
+        "admin.notEnabled": "Firebase에서 로그인 기능이 아직 켜져 있지 않습니다. (Authentication > 로그인 방법에서 익명·Google 사용 설정)",
         "admin.loginFail": "로그인에 실패했습니다. ({code})",
         "err.save": "예약 저장에 실패했습니다. 네트워크 연결을 확인해주세요.",
         "err.delete": "예약 취소에 실패했습니다. 네트워크 연결을 확인해주세요.",
@@ -226,7 +226,7 @@ const I18N = {
         "admin.popupBlocked": "The sign-in popup was blocked. Allow popups or open in Chrome/Safari.",
         "admin.inApp": "Google sign-in is blocked in in-app browsers (e.g. KakaoTalk). Open in Chrome/Safari.",
         "admin.domain": "This domain is not authorized in Firebase. (Authentication > Settings > Authorized domains)",
-        "admin.notEnabled": "Google sign-in is not enabled in Firebase. (Authentication > Sign-in method)",
+        "admin.notEnabled": "Sign-in is not enabled in Firebase yet. (Authentication > Sign-in method: enable Anonymous and Google)",
         "admin.loginFail": "Sign-in failed. ({code})",
         "err.save": "Failed to save. Please check your connection.",
         "err.delete": "Failed to cancel. Please check your connection.",
@@ -1019,7 +1019,8 @@ function openSeriesDelete(res) {
 
 /** 로그인 상태에 맞춰 하단 관리자 영역과 헤더 배지를 갱신 */
 function updateAdminUI() {
-    const cloud = store && store.mode === 'cloud' && !authUnavailable;
+    // 익명 로그인이 실패해도 관리자 버튼은 보여줍니다. (누르면 원인을 안내)
+    const cloud = store && store.mode === 'cloud';
     const google = cloud && currentUser && !currentUser.isAnonymous;
 
     el.adminLoginBtn.classList.toggle('hidden', !cloud || google);
@@ -1061,7 +1062,8 @@ async function handleAdminLogin() {
         const key = {
             'auth/popup-blocked': 'admin.popupBlocked',
             'auth/unauthorized-domain': 'admin.domain',
-            'auth/operation-not-allowed': 'admin.notEnabled'
+            'auth/operation-not-allowed': 'admin.notEnabled',
+            'auth/configuration-not-found': 'admin.notEnabled'
         }[code];
         toast(key ? t(key) : t('admin.loginFail', { code }), 'error');
     }
