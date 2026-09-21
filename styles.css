@@ -409,7 +409,7 @@ button {
     font-weight: 700;
 }
 
-/* ---------- 다가오는 예약 ---------- */
+/* ---------- 오늘 일정 ---------- */
 .upcoming-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -433,6 +433,13 @@ button {
 .upcoming-card.is-ongoing {
     border-left-color: var(--ongoing);
     background: var(--ongoing-soft);
+}
+
+/* 이미 끝난 오늘의 예약 — 흐리게 눌러 진행중/예정 건이 눈에 먼저 들어오게 */
+.upcoming-card.is-done {
+    border-left-color: var(--border);
+    background: transparent;
+    opacity: .5;
 }
 
 .uc-top {
@@ -472,6 +479,11 @@ button {
     color: #fff;
     font-size: .68rem;
     font-weight: 700;
+}
+
+.status-pill.is-done {
+    background: var(--border);
+    color: var(--text-muted);
 }
 
 .placeholder {
@@ -908,7 +920,7 @@ button {
     font-weight: 500;
 }
 
-/* 예약 유형 선택 (일회성 / 고정) */
+/* 예약 유형 선택 (한 번만 / 고정) */
 .segmented {
     display: grid;
     grid-template-columns: 1fr 1fr;

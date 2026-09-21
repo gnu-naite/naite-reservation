@@ -14,9 +14,9 @@ const I18N = {
         "app.reserveBtn": "예약하기",
         "banner.local": "임시 저장 모드입니다. 예약이 이 기기에만 저장되고 다른 사람과 공유되지 않습니다. (config.js 설정 필요)",
 
-        "main.upcomingTitle": "다가오는 예약",
+        "main.upcomingTitle": "오늘 일정",
         "main.loading": "불러오는 중...",
-        "main.noUpcoming": "다가오는 예약이 없습니다.",
+        "main.noUpcoming": "오늘은 예약이 없습니다.",
         "main.today": "오늘",
         "main.noSchedule": "이 날은 예약이 없습니다.",
 
@@ -31,7 +31,7 @@ const I18N = {
         "modal.labelEnd": "종료 시간",
         "modal.nextDayHint": "자정을 넘겨 익일까지 이어지는 예약입니다.",
         "modal.labelType": "예약 유형",
-        "modal.typeOnce": "일회성",
+        "modal.typeOnce": "한 번만",
         "modal.typeWeekly": "고정 (매주)",
         "modal.labelRepeatUntil": "반복 종료일",
         "modal.repeatSummary": "{until}까지 매주 {weekday}요일 · 총 {count}회 예약됩니다.",
@@ -75,6 +75,7 @@ const I18N = {
         "series.confirmAll": "[{team}] 고정 예약 {count}회를 모두 취소할까요? 되돌릴 수 없습니다.",
 
         "status.ongoing": "진행중",
+        "status.done": "종료",
         "status.nextDay": "익일",
         "status.repeat": "매주 {weekday}",
         "btn.edit": "수정",
@@ -128,9 +129,9 @@ const I18N = {
         "app.reserveBtn": "Reserve",
         "banner.local": "Temporary mode: reservations are saved on this device only and are not shared. (config.js needs setup)",
 
-        "main.upcomingTitle": "Upcoming",
+        "main.upcomingTitle": "Today's Schedule",
         "main.loading": "Loading...",
-        "main.noUpcoming": "No upcoming reservations.",
+        "main.noUpcoming": "Nothing booked today.",
         "main.today": "Today",
         "main.noSchedule": "No reservations on this day.",
 
@@ -189,6 +190,7 @@ const I18N = {
         "series.confirmAll": "Cancel all {count} occurrences of [{team}]? This cannot be undone.",
 
         "status.ongoing": "Ongoing",
+        "status.done": "Done",
         "status.nextDay": "next day",
         "status.repeat": "Every {weekday}",
         "btn.edit": "Edit",
@@ -247,7 +249,7 @@ let viewMonth = new Date();       // 캘린더가 보여주는 달
 let selectedDate = new Date();    // 선택된 날짜
 let reservations = [];            // 전체 예약 목록
 let editingId = null;             // 수정 중인 예약 id
-let resType = 'once';             // 'once' 일회성 | 'weekly' 고정(매주)
+let resType = 'once';             // 'once' 한 번만 | 'weekly' 고정(매주)
 let store = null;
 let currentUser = null;           // Firebase 사용자 (익명 또는 구글)
 let authUnavailable = false;      // 인증을 쓸 수 없는 상태 (콘솔에서 미설정 등)
@@ -468,17 +470,11 @@ function dayLabel(date) {
     return lang === 'en' ? `${m}/${d} (${weekdayLabel(date)})` : `${m}월 ${d}일 (${weekdayLabel(date)})`;
 }
 
-function shortDayLabel(date) {
-    const m = date.getMonth() + 1;
-    const d = date.getDate();
-    return lang === 'en' ? `${m}/${d} ${weekdayLabel(date)}` : `${m}월 ${d}일 (${weekdayLabel(date)})`;
-}
-
 /* ---------- 렌더링 ---------- */
 function renderAll() {
     renderCalendar();
     renderDay();
-    renderUpcoming();
+    renderToday();
 }
 
 function renderCalendar() {
@@ -611,32 +607,44 @@ function renderOccupancy(dateKey, now) {
     });
 }
 
-function renderUpcoming() {
+/**
+ * 상단 요약 패널 — 오늘 하루의 일정만 보여줍니다.
+ * 앞으로의 예약을 전부 늘어놓으면 목록이 길어져 한눈에 안 들어오므로,
+ * 이미 끝난 예약까지 포함해 '오늘' 것만 시간순으로 추립니다.
+ */
+function renderToday() {
     const now = Date.now();
-    const upcoming = reservations
-        .filter(r => endTs(r) > now)
-        .sort((a, b) => startTs(a) - startTs(b))
-        .slice(0, 5);
+    const todayKey = fmtDate(new Date());
+    const today = reservations
+        .filter(r => r.date === todayKey)
+        .sort((a, b) => startTs(a) - startTs(b));
 
-    if (upcoming.length === 0) {
+    if (today.length === 0) {
         el.upcoming.innerHTML = `<div class="placeholder">${escapeHtml(t('main.noUpcoming'))}</div>`;
         return;
     }
 
     el.upcoming.innerHTML = '';
-    upcoming.forEach(r => {
+    today.forEach(r => {
         const ongoing = startTs(r) <= now && endTs(r) > now;
+        const done = endTs(r) <= now;
         const card = document.createElement('div');
-        card.className = `upcoming-card${ongoing ? ' is-ongoing' : ''}`;
+        card.className = `upcoming-card${ongoing ? ' is-ongoing' : ''}${done ? ' is-done' : ''}`;
+
+        // 전부 같은 날짜이므로 날짜 대신 시간을 앞세웁니다.
+        let pill = '';
+        if (ongoing) pill = `<span class="status-pill">${escapeHtml(t('status.ongoing'))}</span>`;
+        else if (done) pill = `<span class="status-pill is-done">${escapeHtml(t('status.done'))}</span>`;
+
         card.innerHTML = `
             <div class="uc-top">
-                <span class="uc-date">${escapeHtml(shortDayLabel(parseDate(r.date)))}</span>
-                ${ongoing ? `<span class="status-pill">${escapeHtml(t('status.ongoing'))}</span>` : ''}
+                <span class="uc-date">${escapeHtml(r.startTime)} – ${escapeHtml(r.endTime)}${r.isNextDay ? ` (${escapeHtml(t('status.nextDay'))})` : ''}</span>
+                ${pill}
             </div>
             <div class="uc-team">${escapeHtml(r.teamName)}</div>
-            <div class="uc-time">${escapeHtml(r.startTime)} – ${escapeHtml(r.endTime)}${r.isNextDay ? ` (${escapeHtml(t('status.nextDay'))})` : ''}</div>`;
+            <div class="uc-time">${escapeHtml(r.userName)} · ${escapeHtml(r.purpose)}</div>`;
 
-        // 카드를 누르면 해당 날짜로 이동
+        // 카드를 누르면 오늘 날짜로 이동 (다른 달을 보고 있었다면 돌아옵니다)
         card.addEventListener('click', () => {
             selectedDate = parseDate(r.date);
             viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
@@ -668,7 +676,7 @@ function occurrenceDates(firstDateStr, untilDateStr) {
     return dates;
 }
 
-/** 예약 유형(일회성/고정) 전환 */
+/** 예약 유형(한 번만/고정) 전환 */
 function setResType(type) {
     resType = type === 'weekly' ? 'weekly' : 'once';
 
@@ -1194,7 +1202,7 @@ async function init() {
     // 진행중 표시를 1분마다 갱신
     setInterval(() => {
         renderDay();
-        renderUpcoming();
+        renderToday();
     }, 60_000);
 }
 

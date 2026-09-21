@@ -47,10 +47,10 @@
         </header>
 
         <main class="layout">
-            <!-- ===== 다가오는 예약 ===== -->
+            <!-- ===== 오늘 일정 ===== -->
             <section class="card upcoming">
                 <div class="card-head">
-                    <h2><i class="fa-regular fa-clock"></i><span data-i18n="main.upcomingTitle">다가오는 예약</span></h2>
+                    <h2><i class="fa-regular fa-clock"></i><span data-i18n="main.upcomingTitle">오늘 일정</span></h2>
                 </div>
                 <div id="upcomingList" class="upcoming-list">
                     <div class="placeholder" data-i18n="main.loading">불러오는 중...</div>
@@ -131,12 +131,12 @@
             </div>
 
             <form id="reservationForm" class="modal-body">
-                <!-- 예약 유형: 일회성 / 고정(매주 반복) -->
+                <!-- 예약 유형: 한 번만 / 고정(매주 반복) -->
                 <div class="field" id="resTypeField">
                     <label data-i18n="modal.labelType">예약 유형</label>
                     <div class="segmented" id="resTypeGroup">
                         <button type="button" class="seg-btn is-active" data-type="once">
-                            <i class="fa-regular fa-calendar-check"></i><span data-i18n="modal.typeOnce">일회성</span>
+                            <i class="fa-regular fa-calendar-check"></i><span data-i18n="modal.typeOnce">한 번만</span>
                         </button>
                         <button type="button" class="seg-btn" data-type="weekly">
                             <i class="fa-solid fa-repeat"></i><span data-i18n="modal.typeWeekly">고정 (매주)</span>
@@ -289,7 +289,7 @@
 
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=3"></script>
+    <script type="module" src="app.js?v=4"></script>
 </body>
 
 </html>
