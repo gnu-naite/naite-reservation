@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="default">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나이테 동아리방 예약</title>
+    <meta name="description" content="나이테 동아리방 공유 예약 캘린더">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌳</text></svg>">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=1">
+</head>
+
+<body>
+    <!-- 데이터 저장소 상태 배너 (Firebase 미설정 시 노출) -->
+    <div id="localModeBanner" class="mode-banner hidden">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span data-i18n="banner.local">임시 저장 모드입니다. 예약이 이 기기에만 저장되고 다른 사람과 공유되지 않습니다. (config.js 설정 필요)</span>
+    </div>
+
+    <div class="app">
+        <!-- ===== 헤더 ===== -->
+        <header class="app-header">
+            <div class="header-inner">
+                <div class="brand">
+                    <span class="brand-mark"><i class="fa-solid fa-guitar"></i></span>
+                    <div class="brand-text">
+                        <h1 data-i18n="app.title">나이테 동아리방 예약</h1>
+                        <p data-i18n="app.subtitle">공유 예약 캘린더</p>
+                    </div>
+                </div>
+
+                <div class="header-actions">
+                    <button id="langToggleBtn" class="icon-btn" title="언어 / Language">
+                        <i class="fa-solid fa-language"></i><span id="langLabel">EN</span>
+                    </button>
+                    <button id="themeSettingsBtn" class="icon-btn" title="테마 설정">
+                        <i class="fa-solid fa-palette"></i>
+                    </button>
+                    <button id="quickReserveBtn" class="primary-btn">
+                        <i class="fa-solid fa-plus"></i><span data-i18n="app.reserveBtn">예약하기</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="layout">
+            <!-- ===== 다가오는 예약 ===== -->
+            <section class="card upcoming">
+                <div class="card-head">
+                    <h2><i class="fa-regular fa-clock"></i><span data-i18n="main.upcomingTitle">다가오는 예약</span></h2>
+                </div>
+                <div id="upcomingList" class="upcoming-list">
+                    <div class="placeholder" data-i18n="main.loading">불러오는 중...</div>
+                </div>
+            </section>
+
+            <div class="columns">
+                <!-- ===== 캘린더 ===== -->
+                <section class="card calendar">
+                    <div class="card-head calendar-head">
+                        <div class="month-nav">
+                            <button id="prevMonth" class="icon-btn ghost" aria-label="이전 달"><i class="fa-solid fa-chevron-left"></i></button>
+                            <h2 id="currentMonthYear">2026년 9월</h2>
+                            <button id="nextMonth" class="icon-btn ghost" aria-label="다음 달"><i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
+                        <button id="todayBtn" class="chip-btn" data-i18n="main.today">오늘</button>
+                    </div>
+
+                    <div class="weekdays">
+                        <div data-i18n="day.sun">일</div>
+                        <div data-i18n="day.mon">월</div>
+                        <div data-i18n="day.tue">화</div>
+                        <div data-i18n="day.wed">수</div>
+                        <div data-i18n="day.thu">목</div>
+                        <div data-i18n="day.fri">금</div>
+                        <div data-i18n="day.sat">토</div>
+                    </div>
+                    <div id="calendarGrid" class="calendar-grid"></div>
+                </section>
+
+                <!-- ===== 날짜별 상세 ===== -->
+                <section class="card schedule">
+                    <div class="card-head">
+                        <h2 id="selectedDateTitle">9월 21일 (월)</h2>
+                        <span id="dayCountBadge" class="badge">0</span>
+                    </div>
+
+                    <!-- 24시간 점유 바 -->
+                    <div class="occupancy">
+                        <div id="occupancyBar" class="occupancy-bar"></div>
+                        <div class="occupancy-ticks">
+                            <span>00</span><span>06</span><span>12</span><span>18</span><span>24</span>
+                        </div>
+                    </div>
+
+                    <div id="reservationsList" class="reservations-list"></div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="app-footer">
+            <p data-i18n="footer.line1">&copy; 2026. 경상국립대학교 중앙동아리 &lsquo;나이테&rsquo; 동아리방 예약 시스템</p>
+            <p class="footer-sub" data-i18n="footer.line2">무단 수정 및 재배포를 금지합니다.</p>
+        </footer>
+    </div>
+
+    <!-- ===== 예약 모달 ===== -->
+    <div id="reservationModal" class="overlay hidden">
+        <div class="modal" role="dialog" aria-modal="true">
+            <div class="modal-head">
+                <h2 id="modalTitle" data-i18n="modal.newResTitle">새로운 예약</h2>
+                <button id="closeModalBtn" class="icon-btn ghost" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <form id="reservationForm" class="modal-body">
+                <div class="field">
+                    <label for="resDate" data-i18n="modal.labelDate">이용 날짜</label>
+                    <input type="date" id="resDate" required>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="startTime" data-i18n="modal.labelStart">시작 시간</label>
+                        <select id="startTime" required></select>
+                    </div>
+                    <div class="field">
+                        <label for="endTime" data-i18n="modal.labelEnd">종료 시간</label>
+                        <select id="endTime" required></select>
+                    </div>
+                </div>
+
+                <p id="nextDayHint" class="hint hidden">
+                    <i class="fa-solid fa-moon"></i><span data-i18n="modal.nextDayHint">자정을 넘겨 익일까지 이어지는 예약입니다.</span>
+                </p>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="teamName" data-i18n="modal.labelTeam">팀명</label>
+                        <input type="text" id="teamName" data-i18n-placeholder="modal.phTeam" placeholder="예: 밴드팀" maxlength="30" required>
+                    </div>
+                    <div class="field">
+                        <label for="userName" data-i18n="modal.labelName">예약자 이름</label>
+                        <input type="text" id="userName" data-i18n-placeholder="modal.phName" placeholder="홍길동" maxlength="20" required>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="peopleCount" data-i18n="modal.labelCount">사용 인원수</label>
+                        <input type="number" id="peopleCount" min="1" max="50" data-i18n-placeholder="modal.phCount" placeholder="예: 5" required>
+                    </div>
+                    <div class="field">
+                        <label for="purpose" data-i18n="modal.labelPurpose">사용 목적</label>
+                        <select id="purpose" required>
+                            <option value="합주" data-i18n="modal.optEnsemble">🎸 합주</option>
+                            <option value="강습" data-i18n="modal.optClass">📚 강습</option>
+                            <option value="개인연습" data-i18n="modal.optPractice">🎧 개인연습</option>
+                            <option value="정기회의" data-i18n="modal.optMeeting">🗓️ 정기회의</option>
+                            <option value="기타" data-i18n="modal.optEtc">✨ 기타</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" id="cancelBtn" class="secondary-btn" data-i18n="modal.btnCancel">취소</button>
+                    <button type="submit" id="submitResBtn" class="primary-btn" data-i18n="modal.btnSubmit">예약 완료</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== 테마 모달 ===== -->
+    <div id="themeModal" class="overlay hidden">
+        <div class="modal modal-sm" role="dialog" aria-modal="true">
+            <div class="modal-head">
+                <h2 data-i18n="theme.title">테마 설정</h2>
+                <button id="closeThemeModalBtn" class="icon-btn ghost" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="theme-grid">
+                <button class="theme-btn" data-theme="default">
+                    <span class="swatch swatch-default"></span><span data-i18n="theme.default">기본</span>
+                </button>
+                <button class="theme-btn" data-theme="forest">
+                    <span class="swatch swatch-forest"></span><span data-i18n="theme.forest">포레스트</span>
+                </button>
+                <button class="theme-btn" data-theme="ocean">
+                    <span class="swatch swatch-ocean"></span><span data-i18n="theme.ocean">오션</span>
+                </button>
+                <button class="theme-btn" data-theme="sunset">
+                    <span class="swatch swatch-sunset"></span><span data-i18n="theme.sunset">선셋</span>
+                </button>
+                <button class="theme-btn" data-theme="mono">
+                    <span class="swatch swatch-mono"></span><span data-i18n="theme.mono">모노</span>
+                </button>
+                <button class="theme-btn" data-theme="dark">
+                    <span class="swatch swatch-dark"></span><span data-i18n="theme.dark">다크</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 확인 다이얼로그 ===== -->
+    <div id="confirmModal" class="overlay hidden">
+        <div class="modal modal-sm" role="dialog" aria-modal="true">
+            <div class="modal-head">
+                <h2 id="confirmTitle" data-i18n="confirm.title">예약 취소</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage" class="confirm-text"></p>
+                <div class="modal-actions">
+                    <button type="button" id="confirmNoBtn" class="secondary-btn" data-i18n="confirm.no">아니오</button>
+                    <button type="button" id="confirmYesBtn" class="danger-btn" data-i18n="confirm.yes">취소하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastArea" class="toast-area"></div>
+
+    <script type="module" src="app.js?v=1"></script>
+</body>
+
+</html>
