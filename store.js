@@ -12,7 +12,7 @@
 
 import { FIREBASE_CONFIG, COLLECTION_NAME } from './config.js';
 
-const FIREBASE_VERSION = '12.10.0';
+const FIREBASE_VERSION = '12.19.0';
 const LOCAL_KEY = 'naite_reservations_local';
 
 /** 설정 파일이 실제 값으로 채워졌는지 검사 */

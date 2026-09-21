@@ -9,12 +9,12 @@
    ============================================================ */
 
 export const FIREBASE_CONFIG = {
-    apiKey: "여기에_apiKey_붙여넣기",
-    authDomain: "여기에_authDomain_붙여넣기",
-    projectId: "여기에_projectId_붙여넣기",
-    storageBucket: "여기에_storageBucket_붙여넣기",
-    messagingSenderId: "여기에_messagingSenderId_붙여넣기",
-    appId: "여기에_appId_붙여넣기"
+    apiKey: "AIzaSyAa2ePCB2WGsPqnWzgP6v2ao6csnFzg6P4",
+    authDomain: "naite-reservation.firebaseapp.com",
+    projectId: "naite-reservation",
+    storageBucket: "naite-reservation.firebasestorage.app",
+    messagingSenderId: "751527072626",
+    appId: "1:751527072626:web:7023ddca568df5b067c3eb"
 };
 
 /** Firestore 컬렉션 이름 (예약 데이터가 저장되는 곳) */
