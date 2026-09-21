@@ -13,7 +13,7 @@ service cloud.firestore {
 
     // ▼ 관리자 UID 목록 — config.js 의 ADMIN_UIDS 와 똑같이 맞춰주세요.
     function adminUids() {
-      return ['ADMIN_UID_HERE'];
+      return ['l6wAZEj3oiXO3h4gX7Osq1jQOHH2'];
     }
 
     function signedIn() {

@@ -42,4 +42,6 @@ export const MAX_OCCURRENCES = 60;
  * 그 값을 여기와 firestore.rules 의 ADMIN_UIDS 두 곳에 똑같이 넣으세요.
  * (이메일 대신 UID 를 쓰는 이유: 저장소가 공개라 이메일이 노출되지 않게)
  */
-export const ADMIN_UIDS = [];
+export const ADMIN_UIDS = [
+    "l6wAZEj3oiXO3h4gX7Osq1jQOHH2"
+];
