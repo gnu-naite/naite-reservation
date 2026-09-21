@@ -49,16 +49,38 @@ async function createCloudStore(onChange) {
         }
     );
 
+    /** 500건씩 끊어서 배치 실행 (Firestore 배치 한도) */
+    const runBatched = async (items, apply) => {
+        for (let i = 0; i < items.length; i += 450) {
+            const batch = fs.writeBatch(db);
+            items.slice(i, i + 450).forEach(item => apply(batch, item));
+            await batch.commit();
+        }
+    };
+
     return {
         mode: 'cloud',
         async add(data) {
             await fs.addDoc(col, { ...data, createdAt: new Date().toISOString() });
+        },
+        /** 고정 예약의 여러 회차를 한 번에 저장 */
+        async addMany(list) {
+            const createdAt = new Date().toISOString();
+            await runBatched(list, (batch, data) => {
+                batch.set(fs.doc(col), { ...data, createdAt });
+            });
         },
         async update(id, data) {
             await fs.updateDoc(fs.doc(db, COLLECTION_NAME, id), data);
         },
         async remove(id) {
             await fs.deleteDoc(fs.doc(db, COLLECTION_NAME, id));
+        },
+        /** 고정 예약 전체 회차를 한 번에 취소 */
+        async removeMany(ids) {
+            await runBatched(ids, (batch, id) => {
+                batch.delete(fs.doc(db, COLLECTION_NAME, id));
+            });
         }
     };
 }
@@ -84,11 +106,19 @@ function createLocalStore(onChange) {
 
     queueMicrotask(() => onChange(read()));
 
+    const newId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
     return {
         mode: 'local',
         async add(data) {
             const list = read();
-            list.push({ ...data, id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, createdAt: new Date().toISOString() });
+            list.push({ ...data, id: newId(), createdAt: new Date().toISOString() });
+            write(list);
+        },
+        async addMany(items) {
+            const createdAt = new Date().toISOString();
+            const list = read();
+            items.forEach(data => list.push({ ...data, id: newId(), createdAt }));
             write(list);
         },
         async update(id, data) {
@@ -96,6 +126,10 @@ function createLocalStore(onChange) {
         },
         async remove(id) {
             write(read().filter(r => r.id !== id));
+        },
+        async removeMany(ids) {
+            const set = new Set(ids);
+            write(read().filter(r => !set.has(r.id)));
         }
     };
 }

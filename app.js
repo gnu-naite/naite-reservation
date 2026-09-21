@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { createStore } from './store.js';
-import { CLUB } from './config.js';
+import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES } from './config.js';
 
 /* ---------- i18n 사전 ---------- */
 const I18N = {
@@ -26,9 +26,17 @@ const I18N = {
         "modal.newResTitle": "새로운 예약",
         "modal.editResTitle": "예약 수정",
         "modal.labelDate": "이용 날짜",
+        "modal.labelFirstDate": "첫 예약 날짜",
         "modal.labelStart": "시작 시간",
         "modal.labelEnd": "종료 시간",
         "modal.nextDayHint": "자정을 넘겨 익일까지 이어지는 예약입니다.",
+        "modal.labelType": "예약 유형",
+        "modal.typeOnce": "일회성",
+        "modal.typeWeekly": "고정 (매주)",
+        "modal.labelRepeatUntil": "반복 종료일",
+        "modal.repeatSummary": "{until}까지 매주 {weekday}요일 · 총 {count}회 예약됩니다.",
+        "modal.repeatInvalid": "반복 종료일은 첫 예약 날짜보다 뒤여야 합니다.",
+        "modal.editScopeSeries": "고정 예약 중 이 회차({date})만 수정됩니다.",
         "modal.labelTeam": "팀명",
         "modal.phTeam": "예: 밴드팀",
         "modal.labelName": "예약자 이름",
@@ -38,7 +46,6 @@ const I18N = {
         "modal.labelPurpose": "사용 목적",
         "modal.optEnsemble": "🎸 합주",
         "modal.optClass": "📚 강습",
-        "modal.optPractice": "🎧 개인연습",
         "modal.optMeeting": "🗓️ 정기회의",
         "modal.optEtc": "✨ 기타",
         "modal.btnCancel": "취소",
@@ -58,18 +65,36 @@ const I18N = {
         "confirm.no": "아니오",
         "confirm.yes": "취소하기",
 
+        "series.title": "고정 예약 취소",
+        "series.message": "[{team}] 팀의 고정 예약입니다. 어디까지 취소할까요?",
+        "series.onlyTitle": "이번 주만 취소",
+        "series.onlyDesc": "{date} 하루만 취소하고 나머지 주는 그대로 둡니다.",
+        "series.allTitle": "전체 취소",
+        "series.allDesc": "남은 회차를 포함해 {count}회를 모두 취소합니다.",
+        "series.keep": "닫기",
+        "series.confirmAll": "[{team}] 고정 예약 {count}회를 모두 취소할까요? 되돌릴 수 없습니다.",
+
         "status.ongoing": "진행중",
         "status.nextDay": "익일",
+        "status.repeat": "매주 {weekday}",
         "btn.edit": "수정",
         "btn.delete": "예약 취소",
         "btn.saving": "저장 중...",
 
         "unit.people": "명",
         "msg.saved": "예약이 등록되었습니다.",
+        "msg.savedSeries": "고정 예약 {count}회가 등록되었습니다.",
         "msg.updated": "예약이 수정되었습니다.",
         "msg.deleted": "예약이 취소되었습니다.",
+        "msg.deletedSeries": "고정 예약 {count}회가 모두 취소되었습니다.",
+        "confirm.skipTitle": "일부 주차 중복",
+        "confirm.skip": "{skipped}회차({dates})는 이미 다른 예약이 있습니다.\n\n해당 주를 건너뛰고 나머지 {count}회만 예약할까요?",
+        "confirm.skipYes": "건너뛰고 예약",
         "err.sameTime": "시작 시간과 종료 시간이 같을 수 없습니다.",
         "err.overlap": "해당 시간에 이미 예약이 있습니다. 다른 시간을 선택해주세요.",
+        "err.allOverlap": "선택한 기간의 모든 주차에 이미 예약이 있습니다. 시간을 바꿔주세요.",
+        "err.repeatRange": "반복 종료일은 첫 예약 날짜보다 뒤여야 합니다.",
+        "err.tooMany": "반복 횟수가 너무 많습니다. 종료일을 앞당겨주세요. (최대 {max}회)",
         "err.save": "예약 저장에 실패했습니다. 네트워크 연결을 확인해주세요.",
         "err.delete": "예약 취소에 실패했습니다. 네트워크 연결을 확인해주세요.",
         "err.load": "예약 정보를 불러오지 못했습니다.",
@@ -96,9 +121,17 @@ const I18N = {
         "modal.newResTitle": "New Reservation",
         "modal.editResTitle": "Edit Reservation",
         "modal.labelDate": "Date",
+        "modal.labelFirstDate": "First date",
         "modal.labelStart": "Start time",
         "modal.labelEnd": "End time",
         "modal.nextDayHint": "This booking runs past midnight into the next day.",
+        "modal.labelType": "Booking type",
+        "modal.typeOnce": "One-off",
+        "modal.typeWeekly": "Weekly",
+        "modal.labelRepeatUntil": "Repeat until",
+        "modal.repeatSummary": "Every {weekday} until {until} · {count} bookings total.",
+        "modal.repeatInvalid": "The end date must be after the first date.",
+        "modal.editScopeSeries": "Only this occurrence ({date}) of the weekly booking will change.",
         "modal.labelTeam": "Team name",
         "modal.phTeam": "e.g. Rock Band",
         "modal.labelName": "Booked by",
@@ -108,7 +141,6 @@ const I18N = {
         "modal.labelPurpose": "Purpose",
         "modal.optEnsemble": "🎸 Ensemble",
         "modal.optClass": "📚 Lesson",
-        "modal.optPractice": "🎧 Practice",
         "modal.optMeeting": "🗓️ Meeting",
         "modal.optEtc": "✨ Other",
         "modal.btnCancel": "Cancel",
@@ -128,18 +160,36 @@ const I18N = {
         "confirm.no": "Keep it",
         "confirm.yes": "Cancel it",
 
+        "series.title": "Cancel weekly booking",
+        "series.message": "[{team}] is a weekly booking. How much should be cancelled?",
+        "series.onlyTitle": "This week only",
+        "series.onlyDesc": "Cancels {date} only and keeps the other weeks.",
+        "series.allTitle": "Cancel all",
+        "series.allDesc": "Cancels all {count} occurrences, including upcoming ones.",
+        "series.keep": "Close",
+        "series.confirmAll": "Cancel all {count} occurrences of [{team}]? This cannot be undone.",
+
         "status.ongoing": "Ongoing",
         "status.nextDay": "next day",
+        "status.repeat": "Every {weekday}",
         "btn.edit": "Edit",
         "btn.delete": "Cancel",
         "btn.saving": "Saving...",
 
         "unit.people": "",
         "msg.saved": "Reservation created.",
+        "msg.savedSeries": "{count} weekly bookings created.",
         "msg.updated": "Reservation updated.",
         "msg.deleted": "Reservation cancelled.",
+        "msg.deletedSeries": "All {count} weekly bookings cancelled.",
+        "confirm.skipTitle": "Some weeks conflict",
+        "confirm.skip": "{skipped} week(s) ({dates}) are already booked.\n\nSkip those and book the remaining {count}?",
+        "confirm.skipYes": "Skip and book",
         "err.sameTime": "Start and end time cannot be the same.",
         "err.overlap": "That time slot is already booked. Please pick another.",
+        "err.allOverlap": "Every week in that range is already booked. Please pick another time.",
+        "err.repeatRange": "The end date must be after the first date.",
+        "err.tooMany": "Too many repeats. Please pick an earlier end date. (max {max})",
         "err.save": "Failed to save. Please check your connection.",
         "err.delete": "Failed to cancel. Please check your connection.",
         "err.load": "Could not load reservations.",
@@ -159,6 +209,7 @@ let viewMonth = new Date();       // 캘린더가 보여주는 달
 let selectedDate = new Date();    // 선택된 날짜
 let reservations = [];            // 전체 예약 목록
 let editingId = null;             // 수정 중인 예약 id
+let resType = 'once';             // 'once' 일회성 | 'weekly' 고정(매주)
 let store = null;
 
 /* ---------- DOM ---------- */
@@ -181,9 +232,27 @@ const el = {
     modalTitle: $('modalTitle'),
     form: $('reservationForm'),
     date: $('resDate'),
+    dateLabel: $('resDateLabel'),
     start: $('startTime'),
     end: $('endTime'),
     nextDayHint: $('nextDayHint'),
+
+    resTypeField: $('resTypeField'),
+    resTypeGroup: $('resTypeGroup'),
+    repeatUntilField: $('repeatUntilField'),
+    repeatUntil: $('repeatUntil'),
+    repeatSummary: $('repeatSummary'),
+    editScopeHint: $('editScopeHint'),
+    editScopeText: $('editScopeText'),
+
+    seriesModal: $('seriesModal'),
+    seriesMessage: $('seriesMessage'),
+    seriesOnlyBtn: $('seriesOnlyBtn'),
+    seriesOnlyDesc: $('seriesOnlyDesc'),
+    seriesAllBtn: $('seriesAllBtn'),
+    seriesAllDesc: $('seriesAllDesc'),
+    seriesCancelBtn: $('seriesCancelBtn'),
+    seriesCloseBtn: $('seriesCloseBtn'),
     submitBtn: $('submitResBtn'),
     quickBtn: $('quickReserveBtn'),
     closeModalBtn: $('closeModalBtn'),
@@ -260,9 +329,12 @@ function toast(message, type = '') {
 }
 
 /** 커스텀 확인 다이얼로그 (window.confirm 대체) */
-function askConfirm(message) {
+function askConfirm(message, opts = {}) {
     return new Promise(resolve => {
         el.confirmMessage.textContent = message;
+        $('confirmTitle').textContent = opts.title || t('confirm.title');
+        el.confirmYes.textContent = opts.yes || t('confirm.yes');
+        el.confirmNo.textContent = opts.no || t('confirm.no');
         openOverlay(el.confirmModal);
 
         const done = answer => {
@@ -424,7 +496,10 @@ function renderDay() {
     list.forEach(r => {
         const ongoing = startTs(r) <= now && endTs(r) > now;
         const item = document.createElement('div');
-        item.className = `res-item${ongoing ? ' is-ongoing' : ''}`;
+        item.className = `res-item${ongoing ? ' is-ongoing' : ''}${r.seriesId ? ' is-series' : ''}`;
+        const repeatTag = r.seriesId
+            ? `<span class="tag repeat"><i class="fa-solid fa-repeat"></i> ${escapeHtml(t('status.repeat', { weekday: weekdayLabel(parseDate(r.date)) }))}</span>`
+            : '';
         item.innerHTML = `
             <div class="res-top">
                 <span class="res-time">${escapeHtml(r.startTime)} – ${escapeHtml(r.endTime)}${r.isNextDay ? `<span class="tag next-day">${escapeHtml(t('status.nextDay'))}</span>` : ''}</span>
@@ -434,6 +509,7 @@ function renderDay() {
             <div class="res-meta">
                 <span><i class="fa-regular fa-user"></i>${escapeHtml(r.userName)}</span>
                 <span><i class="fa-solid fa-user-group"></i>${escapeHtml(r.peopleCount)}${escapeHtml(t('unit.people'))}</span>
+                ${repeatTag}
                 ${ongoing ? `<span class="status-pill">${escapeHtml(t('status.ongoing'))}</span>` : ''}
             </div>
             <div class="res-actions">
@@ -505,6 +581,68 @@ function renderUpcoming() {
     });
 }
 
+/* ---------- 고정(매주 반복) 예약 ---------- */
+
+/**
+ * 첫 날짜부터 종료일까지 같은 요일로 7일 간격 날짜 목록을 만듭니다.
+ * 종료일 당일도 포함합니다.
+ */
+function occurrenceDates(firstDateStr, untilDateStr) {
+    const dates = [];
+    if (!firstDateStr || !untilDateStr) return dates;
+
+    const until = parseDate(untilDateStr).getTime();
+    const cursor = parseDate(firstDateStr);
+
+    while (cursor.getTime() <= until && dates.length < MAX_OCCURRENCES + 1) {
+        dates.push(fmtDate(cursor));
+        cursor.setDate(cursor.getDate() + 7);
+    }
+    return dates;
+}
+
+/** 예약 유형(일회성/고정) 전환 */
+function setResType(type) {
+    resType = type === 'weekly' ? 'weekly' : 'once';
+
+    el.resTypeGroup.querySelectorAll('.seg-btn').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.type === resType);
+    });
+    el.repeatUntilField.classList.toggle('hidden', resType !== 'weekly');
+    el.dateLabel.textContent = t(resType === 'weekly' ? 'modal.labelFirstDate' : 'modal.labelDate');
+
+    if (resType === 'weekly' && !el.repeatUntil.value) {
+        el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
+    }
+    updateRepeatSummary();
+}
+
+/** "11월 20일까지 매주 월요일 · 총 9회" 안내 갱신 */
+function updateRepeatSummary() {
+    if (resType !== 'weekly') return;
+
+    const first = el.date.value;
+    const until = el.repeatUntil.value;
+    if (!first || !until) {
+        el.repeatSummary.textContent = '';
+        return;
+    }
+
+    if (parseDate(until).getTime() < parseDate(first).getTime()) {
+        el.repeatSummary.textContent = t('modal.repeatInvalid');
+        el.repeatSummary.classList.add('warn');
+        return;
+    }
+
+    const dates = occurrenceDates(first, until);
+    el.repeatSummary.classList.toggle('warn', dates.length > MAX_OCCURRENCES);
+    el.repeatSummary.textContent = t('modal.repeatSummary', {
+        until: dayLabel(parseDate(until)).replace(/\s*\(.+\)$/, ''),
+        weekday: weekdayLabel(parseDate(first)),
+        count: dates.length
+    });
+}
+
 /* ---------- 시간 선택 ---------- */
 function buildTimeOptions() {
     const times = [];
@@ -572,6 +710,12 @@ function openCreate(date) {
     el.date.value = fmtDate(date);
     el.start.value = '18:00';
     el.end.value = '20:00';
+    el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
+
+    el.resTypeField.classList.remove('hidden');
+    el.editScopeHint.classList.add('hidden');
+    setResType('once');
+
     el.modalTitle.textContent = t('modal.newResTitle');
     el.submitBtn.textContent = t('modal.btnSubmit');
     refreshTimeOptions();
@@ -585,6 +729,19 @@ function openEdit(res) {
     $('userName').value = res.userName;
     $('peopleCount').value = res.peopleCount;
     $('purpose').value = res.purpose;
+
+    // 수정은 항상 해당 회차 하나만 대상으로 합니다.
+    el.resTypeField.classList.add('hidden');
+    el.repeatUntilField.classList.add('hidden');
+    resType = 'once';
+    el.dateLabel.textContent = t('modal.labelDate');
+
+    if (res.seriesId) {
+        el.editScopeText.textContent = t('modal.editScopeSeries', { date: dayLabel(parseDate(res.date)) });
+        el.editScopeHint.classList.remove('hidden');
+    } else {
+        el.editScopeHint.classList.add('hidden');
+    }
 
     refreshTimeOptions();
     el.start.value = res.startTime;
@@ -602,10 +759,14 @@ function closeReservationModal() {
     el.form.reset();
     editingId = null;
     el.nextDayHint.classList.add('hidden');
+    el.editScopeHint.classList.add('hidden');
+    el.resTypeField.classList.remove('hidden');
     Array.from(el.start.options).forEach(o => (o.disabled = false));
     Array.from(el.end.options).forEach(o => (o.disabled = false));
     el.start.value = '18:00';
     el.end.value = '20:00';
+    el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
+    setResType('once');
 }
 
 /* ---------- 등록 / 수정 / 삭제 ---------- */
@@ -622,22 +783,8 @@ async function handleSubmit(event) {
     }
 
     const isNextDay = isEndNextDay(startTime, endTime);
-    const newStart = ts(date, startTime, false);
-    const newEnd = ts(date, endTime, isNextDay);
 
-    // 중복 예약 최종 검증
-    const overlap = reservations
-        .filter(r => r.id !== editingId)
-        .some(r => newStart < endTs(r) && newEnd > startTs(r));
-
-    if (overlap) {
-        toast(t('err.overlap'), 'error');
-        refreshTimeOptions();
-        return;
-    }
-
-    const payload = {
-        date,
+    const base = {
         startTime,
         endTime,
         isNextDay,
@@ -647,20 +794,78 @@ async function handleSubmit(event) {
         purpose: $('purpose').value
     };
 
+    /** 해당 날짜에 이 시간대가 비어 있는지 */
+    const isFree = dateStr => {
+        const s = ts(dateStr, startTime, false);
+        const e = ts(dateStr, endTime, isNextDay);
+        return !reservations.some(r => r.id !== editingId && s < endTs(r) && e > startTs(r));
+    };
+
+    // ----- 저장할 목록 만들기 -----
+    let payloads;
+
+    if (!editingId && resType === 'weekly') {
+        const until = el.repeatUntil.value;
+        if (!until || parseDate(until).getTime() < parseDate(date).getTime()) {
+            toast(t('err.repeatRange'), 'error');
+            return;
+        }
+
+        const allDates = occurrenceDates(date, until);
+        if (allDates.length > MAX_OCCURRENCES) {
+            toast(t('err.tooMany', { max: MAX_OCCURRENCES }), 'error');
+            return;
+        }
+
+        const free = allDates.filter(isFree);
+        const taken = allDates.filter(d => !isFree(d));
+
+        if (free.length === 0) {
+            toast(t('err.allOverlap'), 'error');
+            return;
+        }
+
+        // 일부 주차만 겹치면 건너뛸지 물어봅니다 (시험기간에 이미 다른 예약이 있는 경우 등)
+        if (taken.length > 0) {
+            const shown = taken.slice(0, 4).map(d => dayLabel(parseDate(d)).replace(/\s*\(.+\)$/, ''));
+            if (taken.length > 4) shown.push('…');
+            const ok = await askConfirm(
+                t('confirm.skip', { skipped: taken.length, dates: shown.join(', '), count: free.length }),
+                { title: t('confirm.skipTitle'), yes: t('confirm.skipYes') }
+            );
+            if (!ok) return;
+        }
+
+        const seriesId = `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        payloads = free.map(d => ({ ...base, date: d, seriesId, repeatUntil: until }));
+    } else {
+        if (!isFree(date)) {
+            toast(t('err.overlap'), 'error');
+            refreshTimeOptions();
+            return;
+        }
+        payloads = [{ ...base, date }];
+    }
+
+    // ----- 저장 -----
     const originalLabel = el.submitBtn.textContent;
     el.submitBtn.disabled = true;
     el.submitBtn.textContent = t('btn.saving');
 
     try {
         if (editingId) {
-            await store.update(editingId, payload);
+            // 고정 예약이라도 수정은 이 회차 하나만 반영합니다.
+            await store.update(editingId, payloads[0]);
             toast(t('msg.updated'), 'success');
+        } else if (payloads.length > 1) {
+            await store.addMany(payloads);
+            toast(t('msg.savedSeries', { count: payloads.length }), 'success');
         } else {
-            await store.add(payload);
+            await store.add(payloads[0]);
             toast(t('msg.saved'), 'success');
         }
 
-        selectedDate = parseDate(date);
+        selectedDate = parseDate(payloads[0].date);
         viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
         closeReservationModal();
         renderAll();
@@ -674,15 +879,73 @@ async function handleSubmit(event) {
 }
 
 async function handleDelete(res) {
+    // 고정 예약이면 "이번 주만 / 전체" 중에서 고르게 합니다.
+    if (res.seriesId) {
+        openSeriesDelete(res);
+        return;
+    }
+
     const ok = await askConfirm(t('confirm.body', { team: res.teamName }));
     if (!ok) return;
+    await removeOne(res.id);
+}
+
+async function removeOne(id) {
     try {
-        await store.remove(res.id);
+        await store.remove(id);
         toast(t('msg.deleted'), 'success');
     } catch (err) {
         console.error(err);
         toast(t('err.delete'), 'error');
     }
+}
+
+/** 고정 예약 취소 범위 선택 다이얼로그 */
+function openSeriesDelete(res) {
+    const siblings = reservations.filter(r => r.seriesId === res.seriesId);
+    const dateText = dayLabel(parseDate(res.date));
+
+    el.seriesMessage.textContent = t('series.message', { team: res.teamName });
+    el.seriesOnlyDesc.textContent = t('series.onlyDesc', { date: dateText });
+    el.seriesAllDesc.textContent = t('series.allDesc', { count: siblings.length });
+
+    const close = () => {
+        closeOverlay(el.seriesModal);
+        el.seriesOnlyBtn.removeEventListener('click', onOnly);
+        el.seriesAllBtn.removeEventListener('click', onAll);
+        el.seriesCancelBtn.removeEventListener('click', close);
+        el.seriesCloseBtn.removeEventListener('click', close);
+        el.seriesModal.removeEventListener('click', onBackdrop);
+    };
+    const onBackdrop = e => { if (e.target === el.seriesModal) close(); };
+
+    const onOnly = async () => {
+        close();
+        await removeOne(res.id);
+    };
+
+    const onAll = async () => {
+        close();
+        const ok = await askConfirm(
+            t('series.confirmAll', { team: res.teamName, count: siblings.length })
+        );
+        if (!ok) return;
+        try {
+            await store.removeMany(siblings.map(r => r.id));
+            toast(t('msg.deletedSeries', { count: siblings.length }), 'success');
+        } catch (err) {
+            console.error(err);
+            toast(t('err.delete'), 'error');
+        }
+    };
+
+    el.seriesOnlyBtn.addEventListener('click', onOnly);
+    el.seriesAllBtn.addEventListener('click', onAll);
+    el.seriesCancelBtn.addEventListener('click', close);
+    el.seriesCloseBtn.addEventListener('click', close);
+    el.seriesModal.addEventListener('click', onBackdrop);
+
+    openOverlay(el.seriesModal);
 }
 
 /* ---------- 테마 ---------- */
@@ -717,7 +980,14 @@ function bindEvents() {
     el.resModal.addEventListener('click', e => { if (e.target === el.resModal) closeReservationModal(); });
     el.form.addEventListener('submit', handleSubmit);
 
-    el.date.addEventListener('change', refreshTimeOptions);
+    el.date.addEventListener('change', () => {
+        refreshTimeOptions();
+        updateRepeatSummary();
+    });
+    el.repeatUntil.addEventListener('change', updateRepeatSummary);
+    el.resTypeGroup.querySelectorAll('.seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => setResType(btn.dataset.type));
+    });
     el.start.addEventListener('change', refreshTimeOptions);
     el.end.addEventListener('change', () => {
         el.nextDayHint.classList.toggle('hidden', !isEndNextDay(el.start.value, el.end.value));
@@ -729,6 +999,8 @@ function bindEvents() {
         applyLanguage();
         el.modalTitle.textContent = t(editingId ? 'modal.editResTitle' : 'modal.newResTitle');
         el.submitBtn.textContent = t(editingId ? 'modal.btnEdit' : 'modal.btnSubmit');
+        el.dateLabel.textContent = t(resType === 'weekly' ? 'modal.labelFirstDate' : 'modal.labelDate');
+        updateRepeatSummary();
         renderAll();
     });
 
@@ -741,7 +1013,8 @@ function bindEvents() {
 
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (!el.resModal.classList.contains('hidden')) closeReservationModal();
+        if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
+        else if (!el.resModal.classList.contains('hidden')) closeReservationModal();
         else if (!el.themeModal.classList.contains('hidden')) closeOverlay(el.themeModal);
     });
 }

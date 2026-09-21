@@ -25,3 +25,13 @@ export const CLUB = {
     nameKo: "나이테",
     nameEn: "Naite"
 };
+
+/**
+ * 고정(매주 반복) 예약의 기본 종료일.
+ * 예약 창에서 매번 바꿀 수 있고, 여기 값은 처음 채워지는 기본값입니다.
+ * 학기가 바뀌면 이 날짜만 고쳐주세요. (예: 종강일, 정기공연 날짜)
+ */
+export const DEFAULT_REPEAT_UNTIL = "2026-11-20";
+
+/** 고정 예약 1건이 만들 수 있는 최대 회차 수 (안전장치) */
+export const MAX_OCCURRENCES = 60;

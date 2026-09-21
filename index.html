@@ -116,9 +116,32 @@
             </div>
 
             <form id="reservationForm" class="modal-body">
+                <!-- 예약 유형: 일회성 / 고정(매주 반복) -->
+                <div class="field" id="resTypeField">
+                    <label data-i18n="modal.labelType">예약 유형</label>
+                    <div class="segmented" id="resTypeGroup">
+                        <button type="button" class="seg-btn is-active" data-type="once">
+                            <i class="fa-regular fa-calendar-check"></i><span data-i18n="modal.typeOnce">일회성</span>
+                        </button>
+                        <button type="button" class="seg-btn" data-type="weekly">
+                            <i class="fa-solid fa-repeat"></i><span data-i18n="modal.typeWeekly">고정 (매주)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <p id="editScopeHint" class="hint hidden">
+                    <i class="fa-solid fa-circle-info"></i><span id="editScopeText"></span>
+                </p>
+
                 <div class="field">
-                    <label for="resDate" data-i18n="modal.labelDate">이용 날짜</label>
+                    <label for="resDate" id="resDateLabel" data-i18n="modal.labelDate">이용 날짜</label>
                     <input type="date" id="resDate" required>
+                </div>
+
+                <div class="field hidden" id="repeatUntilField">
+                    <label for="repeatUntil" data-i18n="modal.labelRepeatUntil">반복 종료일</label>
+                    <input type="date" id="repeatUntil">
+                    <p class="field-note" id="repeatSummary"></p>
                 </div>
 
                 <div class="field-row">
@@ -157,7 +180,6 @@
                         <select id="purpose" required>
                             <option value="합주" data-i18n="modal.optEnsemble">🎸 합주</option>
                             <option value="강습" data-i18n="modal.optClass">📚 강습</option>
-                            <option value="개인연습" data-i18n="modal.optPractice">🎧 개인연습</option>
                             <option value="정기회의" data-i18n="modal.optMeeting">🗓️ 정기회의</option>
                             <option value="기타" data-i18n="modal.optEtc">✨ 기타</option>
                         </select>
@@ -213,6 +235,38 @@
                 <div class="modal-actions">
                     <button type="button" id="confirmNoBtn" class="secondary-btn" data-i18n="confirm.no">아니오</button>
                     <button type="button" id="confirmYesBtn" class="danger-btn" data-i18n="confirm.yes">취소하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 고정 예약 취소 범위 선택 ===== -->
+    <div id="seriesModal" class="overlay hidden">
+        <div class="modal modal-sm" role="dialog" aria-modal="true">
+            <div class="modal-head">
+                <h2 data-i18n="series.title">고정 예약 취소</h2>
+                <button id="seriesCloseBtn" class="icon-btn ghost" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p id="seriesMessage" class="confirm-text"></p>
+                <div class="choice-list">
+                    <button type="button" id="seriesOnlyBtn" class="choice-btn">
+                        <i class="fa-regular fa-calendar-xmark"></i>
+                        <span>
+                            <strong data-i18n="series.onlyTitle">이번 주만 취소</strong>
+                            <small id="seriesOnlyDesc" data-i18n="series.onlyDesc">시험기간 등으로 한 주만 쉴 때</small>
+                        </span>
+                    </button>
+                    <button type="button" id="seriesAllBtn" class="choice-btn danger">
+                        <i class="fa-solid fa-calendar-xmark"></i>
+                        <span>
+                            <strong data-i18n="series.allTitle">전체 취소</strong>
+                            <small id="seriesAllDesc"></small>
+                        </span>
+                    </button>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="seriesCancelBtn" class="secondary-btn" data-i18n="series.keep">닫기</button>
                 </div>
             </div>
         </div>

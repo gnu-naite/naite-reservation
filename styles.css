@@ -908,6 +908,129 @@ button {
     font-weight: 500;
 }
 
+/* 예약 유형 선택 (일회성 / 고정) */
+.segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+
+.seg-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 36px;
+    border-radius: 6px;
+    font-size: .86rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    transition: background .15s, color .15s;
+}
+
+.seg-btn i {
+    font-size: .82rem;
+}
+
+.seg-btn:hover {
+    color: var(--text);
+}
+
+.seg-btn.is-active {
+    background: var(--surface);
+    color: var(--accent-text);
+    box-shadow: var(--shadow-sm);
+}
+
+.field-note {
+    font-size: .78rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.field-note.warn {
+    color: var(--danger);
+}
+
+/* 취소 범위 선택 버튼 */
+.choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.choice-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 13px 14px;
+    text-align: left;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    transition: border-color .15s, background .15s;
+}
+
+.choice-btn i {
+    font-size: 1.05rem;
+    color: var(--text-muted);
+    width: 20px;
+    text-align: center;
+}
+
+.choice-btn span {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.choice-btn strong {
+    font-size: .92rem;
+    font-weight: 600;
+}
+
+.choice-btn small {
+    font-size: .76rem;
+    color: var(--text-muted);
+}
+
+.choice-btn:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.choice-btn:hover i {
+    color: var(--accent-text);
+}
+
+.choice-btn.danger:hover {
+    border-color: var(--danger);
+    background: var(--danger-soft);
+}
+
+.choice-btn.danger:hover i,
+.choice-btn.danger:hover strong {
+    color: var(--danger);
+}
+
+/* 고정 예약 표시 */
+.tag.repeat {
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--accent-text);
+}
+
+.res-item.is-series {
+    border-left-style: double;
+    border-left-width: 5px;
+}
+
 .modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -924,6 +1047,7 @@ button {
     font-size: .92rem;
     color: var(--text-soft);
     line-height: 1.6;
+    white-space: pre-line;
 }
 
 .confirm-text strong {
