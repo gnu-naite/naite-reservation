@@ -1182,6 +1182,84 @@ button {
     opacity: .8;
 }
 
+/* ---------- 관리자 ---------- */
+.admin-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: .68rem;
+    font-weight: 700;
+    vertical-align: middle;
+    letter-spacing: 0;
+}
+
+.admin-area {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+.link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: .74rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.link-btn:hover {
+    color: var(--accent-text);
+    background: var(--surface-2);
+}
+
+.admin-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-size: .76rem;
+    color: var(--text-soft);
+}
+
+.admin-uid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.admin-uid code {
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: .74rem;
+    color: var(--text);
+    word-break: break-all;
+}
+
+/* 수정 권한 없는 예약 */
+.res-locked {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-strong);
+    font-size: .74rem;
+    color: var(--text-muted);
+}
+
 /* ---------- 반응형 ---------- */
 @media (max-width: 900px) {
     .columns {

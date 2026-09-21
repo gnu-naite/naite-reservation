@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { createStore } from './store.js';
-import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES } from './config.js';
+import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS } from './config.js';
 
 /* ---------- i18n 사전 ---------- */
 const I18N = {
@@ -95,6 +95,25 @@ const I18N = {
         "err.allOverlap": "선택한 기간의 모든 주차에 이미 예약이 있습니다. 시간을 바꿔주세요.",
         "err.repeatRange": "반복 종료일은 첫 예약 날짜보다 뒤여야 합니다.",
         "err.tooMany": "반복 횟수가 너무 많습니다. 종료일을 앞당겨주세요. (최대 {max}회)",
+        "err.permission": "권한이 없습니다. 예약한 기기에서 시도하거나 관리자에게 요청해주세요.",
+
+        "lock.notOwner": "예약한 기기에서만 수정·취소할 수 있습니다.",
+        "admin.badge": "관리자",
+        "admin.login": "관리자 로그인",
+        "admin.logout": "로그아웃",
+        "admin.copy": "UID 복사",
+        "admin.copied": "UID를 복사했습니다.",
+        "admin.loginTitle": "관리자 로그인",
+        "admin.loginConfirm": "관리자 전용 기능입니다.\n구글 계정으로 로그인하면 관리자로 등록된 계정만 모든 예약을 수정·삭제할 수 있습니다.",
+        "admin.loginYes": "구글로 로그인",
+        "admin.signedIn": "관리자로 로그인되어 있습니다. 모든 예약을 수정·삭제할 수 있습니다.",
+        "admin.notRegistered": "{email} 계정은 아직 관리자로 등록되지 않았습니다. 아래 UID를 등록해주세요.",
+        "admin.loggedOut": "로그아웃했습니다.",
+        "admin.popupBlocked": "로그인 팝업이 차단되었습니다. 팝업을 허용하거나 Chrome·Safari에서 열어주세요.",
+        "admin.inApp": "카카오톡 등 앱 내 브라우저에서는 구글 로그인이 막혀 있습니다. Chrome·Safari에서 열어주세요.",
+        "admin.domain": "이 주소가 Firebase에 승인되지 않았습니다. (Authentication > 설정 > 승인된 도메인)",
+        "admin.notEnabled": "Firebase에서 구글 로그인이 켜져 있지 않습니다. (Authentication > 로그인 방법)",
+        "admin.loginFail": "로그인에 실패했습니다. ({code})",
         "err.save": "예약 저장에 실패했습니다. 네트워크 연결을 확인해주세요.",
         "err.delete": "예약 취소에 실패했습니다. 네트워크 연결을 확인해주세요.",
         "err.load": "예약 정보를 불러오지 못했습니다.",
@@ -190,6 +209,25 @@ const I18N = {
         "err.allOverlap": "Every week in that range is already booked. Please pick another time.",
         "err.repeatRange": "The end date must be after the first date.",
         "err.tooMany": "Too many repeats. Please pick an earlier end date. (max {max})",
+        "err.permission": "Permission denied. Try from the device you booked on, or ask an admin.",
+
+        "lock.notOwner": "Only the device that made this booking can edit or cancel it.",
+        "admin.badge": "Admin",
+        "admin.login": "Admin sign-in",
+        "admin.logout": "Sign out",
+        "admin.copy": "Copy UID",
+        "admin.copied": "UID copied.",
+        "admin.loginTitle": "Admin sign-in",
+        "admin.loginConfirm": "This is for admins only.\nOnly Google accounts registered as admins can edit or delete every booking.",
+        "admin.loginYes": "Sign in with Google",
+        "admin.signedIn": "Signed in as admin. You can edit and delete every booking.",
+        "admin.notRegistered": "{email} is not registered as an admin yet. Register the UID below.",
+        "admin.loggedOut": "Signed out.",
+        "admin.popupBlocked": "The sign-in popup was blocked. Allow popups or open in Chrome/Safari.",
+        "admin.inApp": "Google sign-in is blocked in in-app browsers (e.g. KakaoTalk). Open in Chrome/Safari.",
+        "admin.domain": "This domain is not authorized in Firebase. (Authentication > Settings > Authorized domains)",
+        "admin.notEnabled": "Google sign-in is not enabled in Firebase. (Authentication > Sign-in method)",
+        "admin.loginFail": "Sign-in failed. ({code})",
         "err.save": "Failed to save. Please check your connection.",
         "err.delete": "Failed to cancel. Please check your connection.",
         "err.load": "Could not load reservations.",
@@ -211,6 +249,24 @@ let reservations = [];            // 전체 예약 목록
 let editingId = null;             // 수정 중인 예약 id
 let resType = 'once';             // 'once' 일회성 | 'weekly' 고정(매주)
 let store = null;
+let currentUser = null;           // Firebase 사용자 (익명 또는 구글)
+let authUnavailable = false;      // 인증을 쓸 수 없는 상태 (콘솔에서 미설정 등)
+
+/** 관리자 여부 — 구글 로그인 + ADMIN_UIDS 에 등록된 계정 */
+function isAdmin() {
+    return !!currentUser && !currentUser.isAnonymous && ADMIN_UIDS.includes(currentUser.uid);
+}
+
+/**
+ * 이 예약을 수정/삭제할 수 있는지 (화면 표시용).
+ * 실제 차단은 Firestore 보안 규칙이 서버에서 합니다.
+ */
+function canEdit(r) {
+    if (!store || store.mode === 'local') return true;
+    if (authUnavailable) return true;   // 인증 미설정 상태에선 서버 규칙에 판단을 맡김
+    if (isAdmin()) return true;
+    return !!currentUser && !!r.ownerUid && r.ownerUid === currentUser.uid;
+}
 
 /* ---------- DOM ---------- */
 const $ = id => document.getElementById(id);
@@ -269,7 +325,16 @@ const el = {
 
     langBtn: $('langToggleBtn'),
     langLabel: $('langLabel'),
-    toastArea: $('toastArea')
+    toastArea: $('toastArea'),
+
+    adminBadge: $('adminBadge'),
+    adminLoginBtn: $('adminLoginBtn'),
+    adminInfo: $('adminInfo'),
+    adminInfoText: $('adminInfoText'),
+    adminUidRow: $('adminUidRow'),
+    adminUid: $('adminUid'),
+    copyUidBtn: $('copyUidBtn'),
+    adminLogoutBtn: $('adminLogoutBtn')
 };
 
 /* ---------- 유틸 ---------- */
@@ -512,13 +577,15 @@ function renderDay() {
                 ${repeatTag}
                 ${ongoing ? `<span class="status-pill">${escapeHtml(t('status.ongoing'))}</span>` : ''}
             </div>
+            ${canEdit(r) ? `
             <div class="res-actions">
                 <button class="edit-btn" type="button"><i class="fa-solid fa-pen"></i>${escapeHtml(t('btn.edit'))}</button>
                 <button class="delete-btn" type="button"><i class="fa-regular fa-trash-can"></i>${escapeHtml(t('btn.delete'))}</button>
-            </div>`;
+            </div>` : `
+            <div class="res-locked"><i class="fa-solid fa-lock"></i>${escapeHtml(t('lock.notOwner'))}</div>`}`;
 
-        item.querySelector('.edit-btn').addEventListener('click', () => openEdit(r));
-        item.querySelector('.delete-btn').addEventListener('click', () => handleDelete(r));
+        item.querySelector('.edit-btn')?.addEventListener('click', () => openEdit(r));
+        item.querySelector('.delete-btn')?.addEventListener('click', () => handleDelete(r));
         el.resList.appendChild(item);
     });
 }
@@ -871,7 +938,7 @@ async function handleSubmit(event) {
         renderAll();
     } catch (err) {
         console.error(err);
-        toast(t('err.save'), 'error');
+        toast(t(err?.code === 'permission-denied' ? 'err.permission' : 'err.save'), 'error');
     } finally {
         el.submitBtn.disabled = false;
         el.submitBtn.textContent = originalLabel;
@@ -896,13 +963,13 @@ async function removeOne(id) {
         toast(t('msg.deleted'), 'success');
     } catch (err) {
         console.error(err);
-        toast(t('err.delete'), 'error');
+        toast(t(err?.code === 'permission-denied' ? 'err.permission' : 'err.delete'), 'error');
     }
 }
 
 /** 고정 예약 취소 범위 선택 다이얼로그 */
 function openSeriesDelete(res) {
-    const siblings = reservations.filter(r => r.seriesId === res.seriesId);
+    const siblings = reservations.filter(r => r.seriesId === res.seriesId && canEdit(r));
     const dateText = dayLabel(parseDate(res.date));
 
     el.seriesMessage.textContent = t('series.message', { team: res.teamName });
@@ -935,7 +1002,7 @@ function openSeriesDelete(res) {
             toast(t('msg.deletedSeries', { count: siblings.length }), 'success');
         } catch (err) {
             console.error(err);
-            toast(t('err.delete'), 'error');
+            toast(t(err?.code === 'permission-denied' ? 'err.permission' : 'err.delete'), 'error');
         }
     };
 
@@ -946,6 +1013,77 @@ function openSeriesDelete(res) {
     el.seriesModal.addEventListener('click', onBackdrop);
 
     openOverlay(el.seriesModal);
+}
+
+/* ---------- 관리자 ---------- */
+
+/** 로그인 상태에 맞춰 하단 관리자 영역과 헤더 배지를 갱신 */
+function updateAdminUI() {
+    const cloud = store && store.mode === 'cloud' && !authUnavailable;
+    const google = cloud && currentUser && !currentUser.isAnonymous;
+
+    el.adminLoginBtn.classList.toggle('hidden', !cloud || google);
+    el.adminInfo.classList.toggle('hidden', !google);
+    el.adminBadge.classList.toggle('hidden', !isAdmin());
+
+    if (!google) return;
+
+    if (isAdmin()) {
+        el.adminInfoText.textContent = t('admin.signedIn');
+        el.adminUidRow.classList.add('hidden');
+    } else {
+        el.adminInfoText.textContent = t('admin.notRegistered', { email: currentUser.email || '' });
+        el.adminUid.textContent = currentUser.uid;
+        el.adminUidRow.classList.remove('hidden');
+    }
+}
+
+async function handleAdminLogin() {
+    const ok = await askConfirm(t('admin.loginConfirm'), {
+        title: t('admin.loginTitle'),
+        yes: t('admin.loginYes'),
+        no: t('modal.btnCancel')
+    });
+    if (!ok) return;
+
+    // 카카오톡 등 앱 내 브라우저는 구글이 로그인을 차단합니다.
+    if (/KAKAOTALK|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent)) {
+        toast(t('admin.inApp'), 'error');
+        return;
+    }
+
+    try {
+        await store.signInWithGoogle();
+    } catch (err) {
+        console.error('[admin] 로그인 실패:', err);
+        const code = err?.code || err?.message || 'unknown';
+        if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+        const key = {
+            'auth/popup-blocked': 'admin.popupBlocked',
+            'auth/unauthorized-domain': 'admin.domain',
+            'auth/operation-not-allowed': 'admin.notEnabled'
+        }[code];
+        toast(key ? t(key) : t('admin.loginFail', { code }), 'error');
+    }
+}
+
+async function handleAdminLogout() {
+    await store.signOut();
+    toast(t('admin.loggedOut'));
+}
+
+async function copyUid() {
+    try {
+        await navigator.clipboard.writeText(el.adminUid.textContent);
+        toast(t('admin.copied'), 'success');
+    } catch {
+        // 클립보드 권한이 없으면 텍스트를 선택해 둡니다.
+        const range = document.createRange();
+        range.selectNodeContents(el.adminUid);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
 }
 
 /* ---------- 테마 ---------- */
@@ -1001,8 +1139,13 @@ function bindEvents() {
         el.submitBtn.textContent = t(editingId ? 'modal.btnEdit' : 'modal.btnSubmit');
         el.dateLabel.textContent = t(resType === 'weekly' ? 'modal.labelFirstDate' : 'modal.labelDate');
         updateRepeatSummary();
+        updateAdminUI();
         renderAll();
     });
+
+    el.adminLoginBtn.addEventListener('click', handleAdminLogin);
+    el.adminLogoutBtn.addEventListener('click', handleAdminLogout);
+    el.copyUidBtn.addEventListener('click', copyUid);
 
     el.themeBtn.addEventListener('click', () => openOverlay(el.themeModal));
     el.closeThemeBtn.addEventListener('click', () => closeOverlay(el.themeModal));
@@ -1037,6 +1180,14 @@ async function init() {
     });
 
     el.banner.classList.toggle('hidden', store.mode !== 'local');
+
+    // 로그인 상태(익명/구글)가 바뀌면 권한 표시를 다시 그립니다.
+    store.onUser((user, err) => {
+        currentUser = user;
+        authUnavailable = !!err && !user;
+        updateAdminUI();
+        renderDay();
+    });
 
     // 진행중 표시를 1분마다 갱신
     setInterval(() => {

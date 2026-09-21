@@ -35,3 +35,11 @@ export const DEFAULT_REPEAT_UNTIL = "2026-11-20";
 
 /** 고정 예약 1건이 만들 수 있는 최대 회차 수 (안전장치) */
 export const MAX_OCCURRENCES = 60;
+
+/**
+ * 관리자 UID 목록 — 여기 있는 계정은 모든 예약을 수정/삭제할 수 있습니다.
+ * 사이트 하단 [관리자 로그인]으로 구글 로그인하면 화면에 UID 가 표시됩니다.
+ * 그 값을 여기와 firestore.rules 의 ADMIN_UIDS 두 곳에 똑같이 넣으세요.
+ * (이메일 대신 UID 를 쓰는 이유: 저장소가 공개라 이메일이 노출되지 않게)
+ */
+export const ADMIN_UIDS = [];

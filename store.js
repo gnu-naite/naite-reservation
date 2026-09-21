@@ -26,14 +26,54 @@ function isConfigured(cfg) {
 
 /** Firestore 기반 실시간 저장소 */
 async function createCloudStore(onChange) {
-    const [{ initializeApp }, fs] = await Promise.all([
+    const [{ initializeApp }, fs, au] = await Promise.all([
         import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
-        import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore.js`)
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore.js`),
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)
     ]);
 
     const app = initializeApp(FIREBASE_CONFIG);
     const db = fs.getFirestore(app);
     const col = fs.collection(db, COLLECTION_NAME);
+
+    /* ----- 인증 -----
+       부원: 첫 접속 시 익명 계정을 자동 발급 (브라우저에 유지됨)
+       관리자: 구글 로그인. 익명 계정에 구글을 "연결"해서 기존 예약 소유권을 유지합니다. */
+    const auth = au.getAuth(app);
+    const userListeners = new Set();
+    let currentUser = null;
+    let authError = null;
+    let resolveFirstUser;
+    const firstUser = new Promise(r => (resolveFirstUser = r));
+
+    au.onAuthStateChanged(auth, user => {
+        currentUser = user;
+        if (user) {
+            resolveFirstUser(user);
+        } else {
+            // 로그인 정보가 없으면 익명으로 자동 로그인
+            au.signInAnonymously(auth).catch(err => {
+                console.error('[store] 익명 로그인 실패 (Firebase 콘솔에서 익명 로그인을 켜야 합니다):', err);
+                authError = err;
+                resolveFirstUser(null);
+                userListeners.forEach(fn => fn(null, err));
+            });
+        }
+        userListeners.forEach(fn => fn(user, null));
+    });
+
+    /** 쓰기 직전 현재 사용자 uid (최대 8초 대기, 실패 시 null) */
+    const getUid = async () => {
+        if (currentUser) return currentUser.uid;
+        const user = await Promise.race([firstUser, new Promise(r => setTimeout(() => r(null), 8000))]);
+        return user?.uid ?? null;
+    };
+
+    /** 예약에 작성자 uid 를 붙입니다. 인증을 못 쓰는 경우엔 붙이지 않습니다. */
+    const withOwner = async data => {
+        const uid = await getUid();
+        return uid ? { ...data, ownerUid: uid } : data;
+    };
 
     // 실시간 구독: 다른 사람이 예약을 바꾸면 즉시 반영됩니다.
     fs.onSnapshot(
@@ -60,14 +100,53 @@ async function createCloudStore(onChange) {
 
     return {
         mode: 'cloud',
+
+        /** 로그인 상태가 바뀔 때마다 cb(user, error) 호출 */
+        onUser(cb) {
+            userListeners.add(cb);
+            cb(currentUser, authError);
+        },
+
+        /**
+         * 관리자 구글 로그인.
+         * 익명 계정에 구글을 연결해 uid 를 유지하고,
+         * 이미 다른 기기에서 연결된 구글 계정이면 그 계정으로 로그인합니다.
+         */
+        async signInWithGoogle() {
+            const provider = new au.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+
+            if (auth.currentUser?.isAnonymous) {
+                try {
+                    await au.linkWithPopup(auth.currentUser, provider);
+                    await auth.currentUser.reload();
+                    userListeners.forEach(fn => fn(auth.currentUser, null));
+                    return auth.currentUser;
+                } catch (err) {
+                    if (err.code !== 'auth/credential-already-in-use') throw err;
+                    const cred = au.GoogleAuthProvider.credentialFromError(err);
+                    const res = await au.signInWithCredential(auth, cred);
+                    return res.user;
+                }
+            }
+            const res = await au.signInWithPopup(auth, provider);
+            return res.user;
+        },
+
+        /** 로그아웃 → 자동으로 새 익명 계정으로 돌아갑니다. */
+        async signOut() {
+            await au.signOut(auth);
+        },
+
         async add(data) {
-            await fs.addDoc(col, { ...data, createdAt: new Date().toISOString() });
+            await fs.addDoc(col, { ...(await withOwner(data)), createdAt: new Date().toISOString() });
         },
         /** 고정 예약의 여러 회차를 한 번에 저장 */
         async addMany(list) {
             const createdAt = new Date().toISOString();
+            const uid = await getUid();
             await runBatched(list, (batch, data) => {
-                batch.set(fs.doc(col), { ...data, createdAt });
+                batch.set(fs.doc(col), { ...data, ...(uid ? { ownerUid: uid } : {}), createdAt });
             });
         },
         async update(id, data) {
@@ -110,6 +189,14 @@ function createLocalStore(onChange) {
 
     return {
         mode: 'local',
+        // 로컬 모드는 이 기기 전용이라 권한 구분이 없습니다.
+        onUser(cb) {
+            cb(null, null);
+        },
+        async signInWithGoogle() {
+            throw new Error('local-mode');
+        },
+        async signOut() {},
         async add(data) {
             const list = read();
             list.push({ ...data, id: newId(), createdAt: new Date().toISOString() });
