@@ -748,17 +748,10 @@ function renderToday() {
     }
 
     el.upcoming.innerHTML = '';
-    today.forEach((r, i) => {
+    today.forEach(r => {
         const ongoing = startTs(r) <= now && endTs(r) > now;
         const done = endTs(r) <= now;
-        // 일정 사이를 작은 화살표로 이어 순서가 한눈에 보이게
-        if (i > 0) {
-            const arrow = document.createElement('span');
-            arrow.className = 'tr-arrow';
-            arrow.setAttribute('aria-hidden', 'true');
-            arrow.innerHTML = '<i class="fa-solid fa-arrow-right"></i>';
-            el.upcoming.appendChild(arrow);
-        }
+        // 한 줄짜리 행 — 휴대폰에서도 첫 화면을 다 차지하지 않게
         const row = document.createElement('button');
         row.type = 'button';
         row.className = `today-row${ongoing ? ' is-ongoing' : ''}${done ? ' is-done' : ''}`;
@@ -775,6 +768,16 @@ function renderToday() {
         });
 
         el.upcoming.appendChild(row);
+    });
+    linkTodayRows();
+}
+
+/** 같은 줄에서 다음 일정이 오른쪽에 이어지면 사이에 흐린 화살표 (줄 끝·한 열일 때는 없음) */
+function linkTodayRows() {
+    const rows = [...el.upcoming.querySelectorAll('.today-row')];
+    rows.forEach((row, i) => {
+        const next = rows[i + 1];
+        row.classList.toggle('links-next', !!next && next.offsetTop === row.offsetTop);
     });
 }
 
@@ -1620,6 +1623,7 @@ function bindEvents() {
     });
     el.kakaoLinkBtn.addEventListener('click', startKakaoLink);
     el.kakaoUnlinkBtn.addEventListener('click', unlinkKakao);
+    window.addEventListener('resize', linkTodayRows);   // 화면 폭이 바뀌면 줄바꿈 위치도 바뀜
     el.closeModalBtn.addEventListener('click', closeReservationModal);
     el.cancelBtn.addEventListener('click', closeReservationModal);
     el.resModal.addEventListener('click', e => { if (e.target === el.resModal) closeReservationModal(); });

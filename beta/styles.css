@@ -417,22 +417,21 @@ button {
 }
 
 /* ---------- 오늘 일정 ----------
-   한 줄짜리 일정을 시간순으로 늘어놓고 작은 화살표로 잇습니다. */
+   한 줄짜리 행 목록. 카드를 겹겹이 쌓지 않고 구분선만 둡니다. */
 .upcoming-list {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 4px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    column-gap: 24px;
 }
 
 .today-row {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 0 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    gap: 12px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 4px;
+    border-bottom: 1px solid var(--border);
     text-align: left;
     transition: background .12s;
 }
@@ -450,22 +449,13 @@ button {
 }
 
 .tr-team {
+    flex: 1;
     min-width: 0;
-    max-width: 14em;
     font-size: .92rem;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.tr-arrow {
-    font-size: .7rem;
-    color: var(--text-muted);
-}
-
-.today-row.is-ongoing {
-    border-color: var(--ongoing);
 }
 
 .today-row.is-ongoing .tr-time {
@@ -484,6 +474,23 @@ button {
     color: #fff;
     font-size: .68rem;
     font-weight: 700;
+}
+
+/* 같은 줄의 다음 일정으로 이어지는 흐린 화살표 (열 사이 빈 칸에 배경처럼) */
+.today-row {
+    position: relative;
+}
+
+.today-row.links-next::after {
+    content: "→";
+    position: absolute;
+    top: 50%;
+    right: -19px;
+    transform: translateY(-50%);
+    font-size: .95rem;
+    color: var(--text-muted);
+    opacity: .4;
+    pointer-events: none;
 }
 
 .placeholder {
@@ -1266,6 +1273,10 @@ button {
 }
 
 @media (max-width: 620px) {
+    .upcoming-list {
+        grid-template-columns: 1fr;
+    }
+
     .app {
         padding: 0 14px 36px;
     }
