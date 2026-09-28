@@ -107,13 +107,16 @@ const I18N = {
         "lock.notOwner": "예약한 사람에게 공유 링크를 받으면 수정·취소할 수 있습니다.",
         "btn.share": "공유",
         "share.title": "예약 완료",
-        "share.body": "팀원에게 공유 링크를 보내면 그 기기에서도 이 예약을 수정·취소할 수 있습니다.\n링크는 나중에 예약 카드의 [공유]로 다시 보낼 수 있어요.",
-        "share.yes": "링크 공유",
-        "share.later": "나중에",
+        "share.titleCard": "수정 링크 공유",
+        "share.body": "이 링크를 팀 카톡방에 보내면, 링크를 연 기기에서도 이 예약을 수정·취소할 수 있습니다.",
+        "share.copy": "복사하기",
+        "share.copiedBtn": "복사됨",
+        "share.send": "다른 앱으로 보내기",
         "share.text": "[{team}] 동아리방 예약 수정 링크",
         "share.copied": "링크를 복사했습니다. 카톡방에 붙여넣어 주세요.",
-        "share.manual": "아래 링크를 복사해 팀원에게 보내주세요.",
-        "share.claimed": "권한이 부여되었습니다.",
+        "share.copyFail": "자동 복사가 막혀 있습니다. 링크를 길게 눌러 복사해주세요.",
+        "grant.done": "권한이 부여되었습니다.",
+        "grant.doneTeam": "권한이 부여되었습니다. [{team}] 예약을 이 기기에서 수정·취소할 수 있습니다.",
         "share.claimFail": "공유 링크가 올바르지 않습니다. 예약한 사람에게 다시 받아주세요.",
         "admin.badge": "관리자",
         "admin.login": "관리자 로그인",
@@ -238,13 +241,16 @@ const I18N = {
         "lock.notOwner": "Get the share link from the person who booked to edit or cancel.",
         "btn.share": "Share",
         "share.title": "Booked",
-        "share.body": "Send the share link to your team so they can edit or cancel this booking on their devices too.\nYou can resend it later with [Share] on the booking.",
-        "share.yes": "Share link",
-        "share.later": "Later",
+        "share.titleCard": "Share edit link",
+        "share.body": "Send this link to your team chat. Any device that opens it can edit or cancel this booking.",
+        "share.copy": "Copy",
+        "share.copiedBtn": "Copied",
+        "share.send": "Send via app",
         "share.text": "[{team}] club room booking edit link",
         "share.copied": "Link copied. Paste it into your group chat.",
-        "share.manual": "Copy this link and send it to your team.",
-        "share.claimed": "Permission granted.",
+        "share.copyFail": "Copying is blocked here. Long-press the link to copy it.",
+        "grant.done": "Permission granted.",
+        "grant.doneTeam": "Permission granted. This device can now edit or cancel the [{team}] booking.",
         "share.claimFail": "This share link is invalid. Ask the person who booked for a new one.",
         "admin.badge": "Admin",
         "admin.login": "Admin sign-in",
@@ -354,6 +360,18 @@ const el = {
     editScopeText: $('editScopeText'),
     shareNote: $('shareNote'),
 
+    shareModal: $('shareModal'),
+    shareTitle: $('shareTitle'),
+    shareLink: $('shareLink'),
+    shareCopyBtn: $('shareCopyBtn'),
+    shareSendBtn: $('shareSendBtn'),
+    shareCloseBtn: $('shareCloseBtn'),
+    shareDoneBtn: $('shareDoneBtn'),
+
+    grantBanner: $('grantBanner'),
+    grantText: $('grantText'),
+    grantCloseBtn: $('grantCloseBtn'),
+
     seriesModal: $('seriesModal'),
     seriesMessage: $('seriesMessage'),
     seriesOnlyBtn: $('seriesOnlyBtn'),
@@ -453,7 +471,6 @@ function askConfirm(message, opts = {}) {
         $('confirmTitle').textContent = opts.title || t('confirm.title');
         el.confirmYes.textContent = opts.yes || t('confirm.yes');
         el.confirmYes.className = opts.primary ? 'primary-btn' : 'danger-btn';
-        el.confirmNo.classList.toggle('hidden', !!opts.single);   // 버튼 하나짜리 안내창
         el.confirmNo.textContent = opts.no || t('confirm.no');
         openOverlay(el.confirmModal);
 
@@ -1072,7 +1089,7 @@ async function handleSubmit(event) {
         closeReservationModal();
         renderAll();
 
-        if (share) offerShare(share, base.teamName);
+        if (share) openShareModal(share.id, share.key, { title: t('share.title'), team: base.teamName });
     } catch (err) {
         console.error(err);
         // 새 예약은 누구나 할 수 있으니, 거부되면 "링크를 받으라"가 아니라 설정 문제로 안내합니다.
@@ -1168,35 +1185,54 @@ function shareUrl(shareId, key) {
     return `${location.origin}${location.pathname}#share=${shareId}.${key}`;
 }
 
-/** 휴대폰은 공유 창(카톡 등), PC 는 클립보드 복사 */
-async function sendShareLink(shareId, key, team) {
-    const url = shareUrl(shareId, key);
-    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
-        try {
-            await navigator.share({ title: t('share.text', { team }), url });
-            return;
-        } catch (err) {
-            if (err?.name === 'AbortError') return;   // 사용자가 공유 창을 닫음
-        }
-    }
-    try {
-        await navigator.clipboard.writeText(url);
-        toast(t('share.copied'), 'success');
-    } catch {
-        // 클립보드가 막힌 브라우저(앱 내 브라우저 등): 링크를 창에 보여 직접 복사하게 합니다.
-        await askConfirm(`${t('share.manual')}\n\n${url}`, { title: t('btn.share'), yes: t('series.keep'), primary: true, single: true });
-    }
+let shareModalUrl = '';
+let shareModalTeam = '';
+
+/** 공유 창 — 열자마자 링크를 자동 복사하고, [복사하기] 버튼도 둡니다. */
+function openShareModal(shareId, key, { title, team }) {
+    shareModalUrl = shareUrl(shareId, key);
+    shareModalTeam = team;
+    el.shareTitle.textContent = title;
+    el.shareLink.value = shareModalUrl;
+    el.shareSendBtn.classList.toggle('hidden', !navigator.share);
+    setShareCopied(false);
+    openOverlay(el.shareModal);
+    copyShareLink(true);
 }
 
-/** 예약 직후 공유 여부를 묻습니다. */
-async function offerShare(share, team) {
-    const ok = await askConfirm(t('share.body'), {
-        title: t('share.title'),
-        yes: t('share.yes'),
-        no: t('share.later'),
-        primary: true
-    });
-    if (ok) await sendShareLink(share.id, share.key, team);
+function setShareCopied(done) {
+    el.shareCopyBtn.innerHTML = done
+        ? `<i class="fa-solid fa-check"></i>${escapeHtml(t('share.copiedBtn'))}`
+        : `<i class="fa-regular fa-copy"></i>${escapeHtml(t('share.copy'))}`;
+}
+
+/** auto: 창을 열 때의 자동 복사 — 막혀 있으면 조용히 넘어가고 버튼으로 복사합니다. */
+async function copyShareLink(auto = false) {
+    const done = () => {
+        setShareCopied(true);
+        toast(t('share.copied'), 'success');
+    };
+    try {
+        await navigator.clipboard.writeText(shareModalUrl);
+        return done();
+    } catch { /* 앱 내 브라우저 등은 클립보드 API 가 막혀 있을 수 있음 */ }
+    if (auto) return;
+
+    // 예전 방식 복사 (카톡 내장 브라우저에서도 동작)
+    el.shareLink.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    if (ok) return done();
+    toast(t('share.copyFail'), 'error');   // 입력칸이 선택된 상태라 길게 눌러 복사하면 됩니다
+}
+
+/** 휴대폰 공유 시트(카톡 등 다른 앱으로 보내기) */
+async function sendShareViaApp() {
+    try {
+        await navigator.share({ title: t('share.text', { team: shareModalTeam }), url: shareModalUrl });
+    } catch (err) {
+        if (err?.name !== 'AbortError') copyShareLink();   // 공유 시트가 안 되면 복사로 대신
+    }
 }
 
 /** 예약 카드의 [공유] 버튼 */
@@ -1212,11 +1248,33 @@ async function handleShare(res) {
             await store.write({ share, update: targets.map(r => [r.id, { shareId: share.id }]) });
             ({ id: shareId, key } = share);
         }
-        await sendShareLink(shareId, key, res.teamName);
+        openShareModal(shareId, key, { title: t('share.titleCard'), team: res.teamName });
     } catch (err) {
         console.error(err);
         toast(t(err?.code === 'permission-denied' ? 'err.permission' : 'err.save'), 'error');
     }
+}
+
+let pendingGrant = null;   // 방금 링크로 권한 받은 shareId — 예약 목록이 오면 그 날짜로 이동
+
+/**
+ * 링크를 연 그 자리(카톡 내장 브라우저 포함)에서 화면 위 배너로 알립니다.
+ * 해당 예약을 찾으면 팀명을 보여주고 그 날짜로 이동합니다.
+ */
+function showGrantBanner() {
+    el.grantBanner.classList.remove('hidden');
+    const list = reservations.filter(r => r.shareId === pendingGrant).sort((a, b) => startTs(a) - startTs(b));
+    if (list.length === 0) {
+        el.grantText.textContent = t('grant.done');
+        return;   // 예약 목록이 아직 안 왔으면 도착했을 때 다시 호출됩니다
+    }
+    const now = Date.now();
+    const target = list.find(r => endTs(r) > now) ?? list[0];
+    el.grantText.textContent = t('grant.doneTeam', { team: target.teamName });
+    pendingGrant = null;
+    selectedDate = parseDate(target.date);
+    viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+    renderAll();
 }
 
 /** 주소에 #share=... 가 있으면 이 기기에 수정 권한을 등록합니다. */
@@ -1229,7 +1287,8 @@ async function claimShareFromUrl() {
     try {
         await store.claimShare(m[1], m[2]);
         clearHash();
-        toast(t('share.claimed'), 'success');
+        pendingGrant = m[1];
+        showGrantBanner();
     } catch (err) {
         console.error(err);
         if (err?.code === 'permission-denied') {
@@ -1384,9 +1443,18 @@ function bindEvents() {
         btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
     });
 
+    // 공유 창
+    el.shareCopyBtn.addEventListener('click', () => copyShareLink());
+    el.shareSendBtn.addEventListener('click', sendShareViaApp);
+    el.shareLink.addEventListener('focus', () => el.shareLink.select());
+    [el.shareCloseBtn, el.shareDoneBtn].forEach(b => b.addEventListener('click', () => closeOverlay(el.shareModal)));
+    el.shareModal.addEventListener('click', e => { if (e.target === el.shareModal) closeOverlay(el.shareModal); });
+    el.grantCloseBtn.addEventListener('click', () => el.grantBanner.classList.add('hidden'));
+
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
+        if (!el.shareModal.classList.contains('hidden')) closeOverlay(el.shareModal);
+        else if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
         else if (!el.resModal.classList.contains('hidden')) closeReservationModal();
         else if (!el.themeModal.classList.contains('hidden')) closeOverlay(el.themeModal);
     });
@@ -1405,6 +1473,7 @@ async function init() {
         if (err) toast(t('err.load'), 'error');
         reservations = list;
         renderAll();
+        if (pendingGrant) showGrantBanner();   // 링크로 받은 예약 날짜로 이동
         // 모달이 열려 있으면 선택 가능 시간도 갱신
         if (!el.resModal.classList.contains('hidden')) refreshTimeOptions();
     });

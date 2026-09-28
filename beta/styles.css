@@ -199,6 +199,56 @@ button {
     border-bottom-color: #4a3a14;
 }
 
+/* 공유 링크로 권한을 받았을 때 */
+.mode-banner.grant-banner {
+    background: var(--ongoing-soft);
+    color: var(--ongoing);
+    border-bottom-color: var(--border);
+    font-weight: 600;
+}
+
+.banner-close {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    color: inherit;
+}
+
+.banner-close:hover {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* 공유 창: 링크 + 복사 버튼 */
+.share-row {
+    display: flex;
+    gap: 8px;
+}
+
+.share-row input {
+    flex: 1;
+    min-width: 0;
+    height: 42px;
+    padding: 0 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    font-size: .82rem;
+    color: var(--text-soft);
+}
+
+.share-row input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.share-row .primary-btn {
+    height: 42px;
+    flex-shrink: 0;
+}
+
 /* 베타 안내 — 강조색 계열로 주황 경고 배너와 구분 */
 .mode-banner.beta-banner {
     background: var(--accent-soft);
