@@ -87,11 +87,13 @@ service cloud.firestore {
       allow read: if col in reservationCollections();
 
       // 생성: 로그인 필수 + 작성자 uid 는 반드시 본인
+      //       (예외: 베타 테스트 컬렉션에 한해 관리자가 정식 예약을 작성자 그대로 복사)
       //       shareId 를 붙이려면 그 링크를 만들었거나 권한을 받은 기기여야 함
       allow create: if col in reservationCollections()
         && signedIn()
         && isValidReservation(request.resource.data)
-        && request.resource.data.ownerUid == request.auth.uid
+        && (request.resource.data.get('ownerUid', '') == request.auth.uid
+            || (col == 'naite_reservations_beta' && isAdmin()))
         && (!('shareId' in request.resource.data)
             || ownsShare(request.resource.data.shareId)
             || hasGrant(request.resource.data.shareId));
