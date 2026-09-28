@@ -1047,6 +1047,7 @@ button {
     color: var(--text-soft);
     line-height: 1.6;
     white-space: pre-line;
+    overflow-wrap: anywhere;   /* 긴 공유 링크가 창 밖으로 넘치지 않게 */
 }
 
 .confirm-text strong {

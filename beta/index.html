@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
 </head>
 
 <body>
@@ -207,6 +207,10 @@
                     </div>
                 </div>
 
+                <p id="shareNote" class="field-note hidden">
+                    <i class="fa-solid fa-share-nodes"></i> <span data-i18n="modal.shareNote">예약하면 팀원에게 보낼 수정 링크가 만들어집니다.</span>
+                </p>
+
                 <div class="modal-actions">
                     <button type="button" id="cancelBtn" class="secondary-btn" data-i18n="modal.btnCancel">취소</button>
                     <button type="submit" id="submitResBtn" class="primary-btn" data-i18n="modal.btnSubmit">예약 완료</button>
@@ -295,7 +299,7 @@
 
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=6"></script>
+    <script type="module" src="app.js?v=8"></script>
 </body>
 
 </html>

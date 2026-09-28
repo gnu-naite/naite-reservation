@@ -98,6 +98,8 @@ const I18N = {
         "err.repeatRange": "반복 종료일은 첫 예약 날짜보다 뒤여야 합니다.",
         "err.tooMany": "반복 횟수가 너무 많습니다. 종료일을 앞당겨주세요. (최대 {max}회)",
         "err.permission": "권한이 없습니다. 예약한 사람에게 공유 링크를 받아주세요.",
+        "err.permissionNew": "서버가 예약 저장을 거부했습니다. 관리자에게 알려주세요. (보안 규칙 설정 확인 필요)",
+        "modal.shareNote": "예약하면 팀원에게 보낼 수정 링크가 만들어집니다.",
         "confirm.toOnceTitle": "한 번 예약으로 변경",
         "confirm.toOnce": "이 회차만 남기고, 아직 남은 고정 예약 {count}회를 취소할까요? 되돌릴 수 없습니다.",
         "confirm.toOnceYes": "변경하기",
@@ -111,7 +113,7 @@ const I18N = {
         "share.text": "[{team}] 동아리방 예약 수정 링크",
         "share.copied": "링크를 복사했습니다. 카톡방에 붙여넣어 주세요.",
         "share.manual": "아래 링크를 복사해 팀원에게 보내주세요.",
-        "share.claimed": "이제 이 기기에서도 해당 예약을 수정·취소할 수 있습니다.",
+        "share.claimed": "권한이 부여되었습니다.",
         "share.claimFail": "공유 링크가 올바르지 않습니다. 예약한 사람에게 다시 받아주세요.",
         "admin.badge": "관리자",
         "admin.login": "관리자 로그인",
@@ -227,6 +229,8 @@ const I18N = {
         "err.repeatRange": "The end date must be after the first date.",
         "err.tooMany": "Too many repeats. Please pick an earlier end date. (max {max})",
         "err.permission": "Permission denied. Ask the person who booked for the share link.",
+        "err.permissionNew": "The server refused to save this booking. Please tell an admin. (security rules need checking)",
+        "modal.shareNote": "After booking, you get an edit link to send to your team.",
         "confirm.toOnceTitle": "Change to one-off",
         "confirm.toOnce": "Keep only this occurrence and cancel the {count} remaining weekly bookings? This cannot be undone.",
         "confirm.toOnceYes": "Change",
@@ -240,7 +244,7 @@ const I18N = {
         "share.text": "[{team}] club room booking edit link",
         "share.copied": "Link copied. Paste it into your group chat.",
         "share.manual": "Copy this link and send it to your team.",
-        "share.claimed": "This device can now edit and cancel that booking.",
+        "share.claimed": "Permission granted.",
         "share.claimFail": "This share link is invalid. Ask the person who booked for a new one.",
         "admin.badge": "Admin",
         "admin.login": "Admin sign-in",
@@ -348,6 +352,7 @@ const el = {
     repeatSummary: $('repeatSummary'),
     editScopeHint: $('editScopeHint'),
     editScopeText: $('editScopeText'),
+    shareNote: $('shareNote'),
 
     seriesModal: $('seriesModal'),
     seriesMessage: $('seriesMessage'),
@@ -448,6 +453,7 @@ function askConfirm(message, opts = {}) {
         $('confirmTitle').textContent = opts.title || t('confirm.title');
         el.confirmYes.textContent = opts.yes || t('confirm.yes');
         el.confirmYes.className = opts.primary ? 'primary-btn' : 'danger-btn';
+        el.confirmNo.classList.toggle('hidden', !!opts.single);   // 버튼 하나짜리 안내창
         el.confirmNo.textContent = opts.no || t('confirm.no');
         openOverlay(el.confirmModal);
 
@@ -878,6 +884,7 @@ function openCreate(date) {
     el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
     setResType('once');
 
+    el.shareNote.classList.toggle('hidden', store?.mode !== 'cloud');   // 공유 링크는 공유 모드에서만
     el.modalTitle.textContent = t('modal.newResTitle');
     el.submitBtn.textContent = t('modal.btnSubmit');
     refreshTimeOptions();
@@ -900,6 +907,7 @@ function openEdit(res) {
     el.end.value = res.endTime;
     el.nextDayHint.classList.toggle('hidden', !res.isNextDay);
 
+    el.shareNote.classList.add('hidden');
     el.modalTitle.textContent = t('modal.editResTitle');
     el.submitBtn.textContent = t('modal.btnEdit');
     openOverlay(el.resModal);
@@ -1067,7 +1075,9 @@ async function handleSubmit(event) {
         if (share) offerShare(share, base.teamName);
     } catch (err) {
         console.error(err);
-        toast(t(err?.code === 'permission-denied' ? 'err.permission' : 'err.save'), 'error');
+        // 새 예약은 누구나 할 수 있으니, 거부되면 "링크를 받으라"가 아니라 설정 문제로 안내합니다.
+        const denied = editing ? 'err.permission' : 'err.permissionNew';
+        toast(t(err?.code === 'permission-denied' ? denied : 'err.save'), 'error');
     } finally {
         el.submitBtn.disabled = false;
         el.submitBtn.textContent = originalLabel;
@@ -1154,9 +1164,8 @@ function createShare() {
 }
 
 function shareUrl(shareId, key) {
-    // openExternalBrowser: 카톡에서 눌러도 기본 브라우저로 열리게 합니다.
-    // (카톡 내장 브라우저는 저장 공간이 따로라 다른 기기로 인식됩니다)
-    return `${location.origin}${location.pathname}?openExternalBrowser=1#share=${shareId}.${key}`;
+    // 링크를 연 그 창에서 바로 권한만 받습니다. (다른 브라우저로 넘기지 않음)
+    return `${location.origin}${location.pathname}#share=${shareId}.${key}`;
 }
 
 /** 휴대폰은 공유 창(카톡 등), PC 는 클립보드 복사 */
@@ -1174,7 +1183,8 @@ async function sendShareLink(shareId, key, team) {
         await navigator.clipboard.writeText(url);
         toast(t('share.copied'), 'success');
     } catch {
-        window.prompt(t('share.manual'), url);
+        // 클립보드가 막힌 브라우저(앱 내 브라우저 등): 링크를 창에 보여 직접 복사하게 합니다.
+        await askConfirm(`${t('share.manual')}\n\n${url}`, { title: t('btn.share'), yes: t('series.keep'), primary: true, single: true });
     }
 }
 
