@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { createStore, newShare } from './store.js';
-import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS } from './config.js';
+import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
 
 /* ---------- i18n 사전 ---------- */
 const I18N = {
@@ -111,8 +111,10 @@ const I18N = {
         "share.body": "이 링크를 팀 카톡방에 보내면, 링크를 연 기기에서도 이 예약을 수정·취소할 수 있습니다.",
         "share.copy": "복사하기",
         "share.copiedBtn": "복사됨",
-        "share.send": "다른 앱으로 보내기",
+        "share.send": "카카오톡으로 보내기",
         "share.text": "[{team}] 동아리방 예약 수정 링크",
+        "share.kakaoText": "[{team}] 동아리방 예약\n아래 버튼을 누르면 이 예약을 수정·취소할 수 있는 권한이 생깁니다.",
+        "share.kakaoButton": "수정 권한 받기",
         "share.copied": "링크를 복사했습니다. 카톡방에 붙여넣어 주세요.",
         "share.copyFail": "자동 복사가 막혀 있습니다. 링크를 길게 눌러 복사해주세요.",
         "grant.done": "권한이 부여되었습니다.",
@@ -245,8 +247,10 @@ const I18N = {
         "share.body": "Send this link to your team chat. Any device that opens it can edit or cancel this booking.",
         "share.copy": "Copy",
         "share.copiedBtn": "Copied",
-        "share.send": "Send via app",
+        "share.send": "Send via KakaoTalk",
         "share.text": "[{team}] club room booking edit link",
+        "share.kakaoText": "[{team}] club room booking\nTap the button below to get permission to edit or cancel it.",
+        "share.kakaoButton": "Get edit access",
         "share.copied": "Link copied. Paste it into your group chat.",
         "share.copyFail": "Copying is blocked here. Long-press the link to copy it.",
         "grant.done": "Permission granted.",
@@ -1182,8 +1186,43 @@ function createShare() {
 
 function shareUrl(shareId, key) {
     // 링크를 연 그 창에서 바로 권한만 받습니다. (다른 브라우저로 넘기지 않음)
-    return `${location.origin}${location.pathname}#share=${shareId}.${key}`;
+    // 카카오톡 메시지 링크에서 # 뒤가 빠질 수 있어 쿼리(?share=)로 보냅니다.
+    return `${location.origin}${location.pathname}?share=${shareId}.${key}`;
 }
+
+/* 카카오톡 공유 SDK — 공유 창을 열 때 미리 불러와 둡니다.
+   (버튼을 누른 뒤에 불러오면 브라우저가 팝업·앱 전환을 막을 수 있음) */
+const KAKAO_SDK = {
+    src: 'https://t1.kakaocdn.net/kakao_js_sdk/2.8.3/kakao.min.js',
+    integrity: 'sha384-oroumrnFVE0xtgqyDZJARgERibXg2C28380uaUZz2kHDS5CR7tu20eGiOU6GkTpy'
+};
+let kakaoLoading = null;
+let kakaoReady = false;
+
+function loadKakao() {
+    if (!KAKAO_JS_KEY) return Promise.resolve(false);
+    kakaoLoading ??= new Promise(resolve => {
+        const s = document.createElement('script');
+        s.src = KAKAO_SDK.src;
+        s.integrity = KAKAO_SDK.integrity;
+        s.crossOrigin = 'anonymous';
+        s.onload = () => {
+            try {
+                if (!window.Kakao.isInitialized()) window.Kakao.init(KAKAO_JS_KEY);
+                resolve(true);
+            } catch (err) {
+                console.error('[kakao] 초기화 실패:', err);
+                resolve(false);
+            }
+        };
+        s.onerror = () => resolve(false);
+        document.head.appendChild(s);
+    });
+    return kakaoLoading;
+}
+
+/** 휴대폰 기본 공유 창 (카카오 SDK 를 못 쓸 때 대안) */
+const canNativeShare = () => !!navigator.share && matchMedia('(pointer: coarse)').matches;
 
 let shareModalUrl = '';
 let shareModalTeam = '';
@@ -1194,7 +1233,11 @@ function openShareModal(shareId, key, { title, team }) {
     shareModalTeam = team;
     el.shareTitle.textContent = title;
     el.shareLink.value = shareModalUrl;
-    el.shareSendBtn.classList.toggle('hidden', !navigator.share);
+    el.shareSendBtn.classList.toggle('hidden', !(kakaoReady || canNativeShare()));
+    loadKakao().then(ok => {
+        kakaoReady = ok;
+        el.shareSendBtn.classList.toggle('hidden', !(ok || canNativeShare()));
+    });
     setShareCopied(false);
     openOverlay(el.shareModal);
     copyShareLink(true);
@@ -1226,8 +1269,22 @@ async function copyShareLink(auto = false) {
     toast(t('share.copyFail'), 'error');   // 입력칸이 선택된 상태라 길게 눌러 복사하면 됩니다
 }
 
-/** 휴대폰 공유 시트(카톡 등 다른 앱으로 보내기) */
+/** [카카오톡으로 보내기] — 카톡 친구·채팅방 선택 화면을 바로 띄웁니다. */
 async function sendShareViaApp() {
+    if (kakaoReady) {
+        try {
+            window.Kakao.Share.sendDefault({
+                objectType: 'text',
+                text: t('share.kakaoText', { team: shareModalTeam }),
+                link: { mobileWebUrl: shareModalUrl, webUrl: shareModalUrl },
+                buttonTitle: t('share.kakaoButton')
+            });
+            return;
+        } catch (err) {
+            console.error('[kakao] 공유 실패:', err);   // 아래 기본 공유 창으로 대신
+        }
+    }
+    if (!navigator.share) return copyShareLink();
     try {
         await navigator.share({ title: t('share.text', { team: shareModalTeam }), url: shareModalUrl });
     } catch (err) {
@@ -1277,9 +1334,10 @@ function showGrantBanner() {
     renderAll();
 }
 
-/** 주소에 #share=... 가 있으면 이 기기에 수정 권한을 등록합니다. */
+/** 주소에 ?share=... (예전 링크는 #share=...) 가 있으면 이 기기에 수정 권한을 등록합니다. */
 async function claimShareFromUrl() {
-    const m = location.hash.match(/^#share=(sh_[A-Za-z0-9]{20})\.([A-Za-z0-9]{32})$/);
+    const raw = new URLSearchParams(location.search).get('share') ?? location.hash.match(/^#share=(.+)$/)?.[1];
+    const m = raw?.match(/^(sh_[A-Za-z0-9]{20})\.([A-Za-z0-9]{32})$/);
     if (!m) return;
     // 주소창의 key 는 등록이 끝나거나 링크가 틀렸을 때만 지웁니다.
     // (네트워크 오류 등이면 남겨 두어 새로고침으로 다시 시도할 수 있게)
