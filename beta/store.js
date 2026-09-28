@@ -1,0 +1,288 @@
+/* ============================================================
+   데이터 저장소 계층
+   ------------------------------------------------------------
+   - config.js 에 Firebase 설정이 채워져 있으면 Firestore(실시간 공유) 사용
+   - 아직 설정 전이라면 localStorage 임시 모드로 동작 (배너 노출)
+   두 경우 모두 동일한 인터페이스를 제공합니다.
+     store.mode           'cloud' | 'local'
+     store.write(ops)     추가·수정·삭제를 한 번에 (원자적으로) 저장
+   ============================================================ */
+
+import { FIREBASE_CONFIG, COLLECTION_NAME } from './config.js';
+
+const FIREBASE_VERSION = '12.19.0';
+// 컬렉션별로 따로 저장 (정식: naite_reservations_local 그대로, 베타는 분리)
+const LOCAL_KEY = `${COLLECTION_NAME}_local`;
+
+/* 공유 링크 — 정식/베타가 같은 컬렉션을 씁니다 (id 가 무작위라 섞이지 않음)
+   naite_shares/{shareId}              { ownerUid, key }  만든 사람만 읽기 가능
+   naite_access/{uid}/grants/{shareId} { key }            링크를 연 기기의 수정 권한 */
+const SHARES = 'naite_shares';
+const ACCESS = 'naite_access';
+
+const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+// ponytail: b % 62 는 약간 치우치지만 32자리 키의 추측 불가능성엔 영향 없음
+const randomId = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALNUM[b % ALNUM.length]).join('');
+
+/** 새 공유 링크 한 벌 (id 는 예약 문서에 공개, key 는 링크에만 담기는 비밀값) */
+export function newShare() {
+    return { id: `sh_${randomId(20)}`, key: randomId(32) };
+}
+
+/** 값이 undefined 인 필드를 뺍니다. */
+const withoutUndefined = obj => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
+
+/** 설정 파일이 실제 값으로 채워졌는지 검사 */
+function isConfigured(cfg) {
+    const required = ['apiKey', 'authDomain', 'projectId', 'appId'];
+    return required.every(k => {
+        const v = cfg?.[k];
+        return typeof v === 'string' && v.length > 0 && !v.includes('여기에') && !v.includes('YOUR_');
+    });
+}
+
+/** Firestore 기반 실시간 저장소 */
+async function createCloudStore(onChange) {
+    const [{ initializeApp }, fs, au] = await Promise.all([
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`),
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore.js`),
+        import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)
+    ]);
+
+    const app = initializeApp(FIREBASE_CONFIG);
+    const db = fs.getFirestore(app);
+    const col = fs.collection(db, COLLECTION_NAME);
+
+    /* ----- 이 기기의 공유 권한 -----
+       shares: 내가 만든 공유 링크 (shareId → key)
+       grants: 링크를 열어 받은 수정 권한 (shareId 집합) */
+    const accessListeners = new Set();
+    let access = { shares: new Map(), grants: new Set() };
+    let accessUid = null;
+    let unsubAccess = [];
+    const emitAccess = () => accessListeners.forEach(fn => fn(access));
+
+    const watchAccess = uid => {
+        if (uid === accessUid) return;
+        accessUid = uid;
+        unsubAccess.forEach(u => u());
+        unsubAccess = [];
+        access = { shares: new Map(), grants: new Set() };
+        emitAccess();
+        if (!uid) return;
+
+        const onErr = err => console.error('[store] 공유 권한 구독 실패:', err);
+        unsubAccess.push(fs.onSnapshot(
+            fs.query(fs.collection(db, SHARES), fs.where('ownerUid', '==', uid)),
+            snap => {
+                access = { ...access, shares: new Map(snap.docs.map(d => [d.id, d.data().key])) };
+                emitAccess();
+            },
+            onErr
+        ));
+        unsubAccess.push(fs.onSnapshot(
+            fs.collection(db, ACCESS, uid, 'grants'),
+            snap => {
+                access = { ...access, grants: new Set(snap.docs.map(d => d.id)) };
+                emitAccess();
+            },
+            onErr
+        ));
+    };
+
+    /* ----- 인증 -----
+       부원: 첫 접속 시 익명 계정을 자동 발급 (브라우저에 유지됨)
+       관리자: 구글 로그인. 익명 계정에 구글을 "연결"해서 기존 예약 소유권을 유지합니다. */
+    const auth = au.getAuth(app);
+    const userListeners = new Set();
+    let currentUser = null;
+    let authError = null;
+    let resolveFirstUser;
+    const firstUser = new Promise(r => (resolveFirstUser = r));
+
+    au.onAuthStateChanged(auth, user => {
+        currentUser = user;
+        watchAccess(user?.uid ?? null);
+        if (user) {
+            resolveFirstUser(user);
+        } else {
+            // 로그인 정보가 없으면 익명으로 자동 로그인
+            au.signInAnonymously(auth).catch(err => {
+                console.error('[store] 익명 로그인 실패 (Firebase 콘솔에서 익명 로그인을 켜야 합니다):', err);
+                authError = err;
+                resolveFirstUser(null);
+                userListeners.forEach(fn => fn(null, err));
+            });
+        }
+        userListeners.forEach(fn => fn(user, null));
+    });
+
+    /** 쓰기 직전 현재 사용자 uid (최대 8초 대기, 실패 시 null) */
+    const getUid = async () => {
+        if (currentUser) return currentUser.uid;
+        const user = await Promise.race([firstUser, new Promise(r => setTimeout(() => r(null), 8000))]);
+        return user?.uid ?? null;
+    };
+
+    // 실시간 구독: 다른 사람이 예약을 바꾸면 즉시 반영됩니다.
+    fs.onSnapshot(
+        fs.query(col),
+        snapshot => {
+            const list = [];
+            snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+            onChange(list);
+        },
+        err => {
+            console.error('[store] 실시간 구독 실패:', err);
+            onChange([], err);
+        }
+    );
+
+    return {
+        mode: 'cloud',
+
+        /** 로그인 상태가 바뀔 때마다 cb(user, error) 호출 */
+        onUser(cb) {
+            userListeners.add(cb);
+            cb(currentUser, authError);
+        },
+
+        /** 공유 권한이 바뀔 때마다 cb({ shares, grants }) 호출 */
+        onAccess(cb) {
+            accessListeners.add(cb);
+            cb(access);
+        },
+
+        /**
+         * 관리자 구글 로그인.
+         * 익명 계정에 구글을 연결해 uid 를 유지하고,
+         * 이미 다른 기기에서 연결된 구글 계정이면 그 계정으로 로그인합니다.
+         */
+        async signInWithGoogle() {
+            const provider = new au.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+
+            if (auth.currentUser?.isAnonymous) {
+                try {
+                    await au.linkWithPopup(auth.currentUser, provider);
+                    await auth.currentUser.reload();
+                    userListeners.forEach(fn => fn(auth.currentUser, null));
+                    return auth.currentUser;
+                } catch (err) {
+                    if (err.code !== 'auth/credential-already-in-use') throw err;
+                    const cred = au.GoogleAuthProvider.credentialFromError(err);
+                    const res = await au.signInWithCredential(auth, cred);
+                    return res.user;
+                }
+            }
+            const res = await au.signInWithPopup(auth, provider);
+            return res.user;
+        },
+
+        /** 로그아웃 → 자동으로 새 익명 계정으로 돌아갑니다. */
+        async signOut() {
+            await au.signOut(auth);
+        },
+
+        /**
+         * 추가·수정·삭제를 한 배치로 저장합니다. 중간에 실패해도 반쯤 저장되는 일이 없습니다.
+         * (고정 예약은 최대 60회라 배치 한도 500건 안에 들어갑니다)
+         *   share   새 공유 링크 { id, key } — 예약과 같은 배치에서 만들어야 보안 규칙을 통과합니다
+         *   add     [data]         새 예약 (작성자 uid 자동 기록)
+         *   update  [[id, data]]   값이 undefined 인 필드는 삭제
+         *   remove  [id]
+         */
+        async write({ share, add = [], update = [], remove = [] }) {
+            const uid = await getUid();
+            const createdAt = new Date().toISOString();
+            const batch = fs.writeBatch(db);
+
+            if (share) batch.set(fs.doc(db, SHARES, share.id), { ownerUid: uid, key: share.key, createdAt });
+            add.forEach(data => {
+                batch.set(fs.doc(col), { ...withoutUndefined(data), ...(uid ? { ownerUid: uid } : {}), createdAt });
+            });
+            update.forEach(([id, data]) => {
+                const fields = Object.fromEntries(
+                    Object.entries(data).map(([k, v]) => [k, v === undefined ? fs.deleteField() : v])
+                );
+                batch.update(fs.doc(db, COLLECTION_NAME, id), fields);
+            });
+            remove.forEach(id => batch.delete(fs.doc(db, COLLECTION_NAME, id)));
+
+            await batch.commit();
+        },
+
+        /** 공유 링크의 key 를 이 기기의 수정 권한으로 등록 (같은 링크를 다시 열어도 안전) */
+        async claimShare(shareId, key) {
+            const uid = await getUid();
+            if (!uid) throw new Error('no-auth');
+            await fs.setDoc(fs.doc(db, ACCESS, uid, 'grants', shareId), { key, createdAt: new Date().toISOString() });
+        }
+    };
+}
+
+/** localStorage 기반 임시 저장소 (Firebase 설정 전 / 연결 실패 시) */
+function createLocalStore(onChange) {
+    const read = () => {
+        try {
+            return JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]');
+        } catch {
+            return [];
+        }
+    };
+    const save = list => {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(list));
+        onChange(list);
+    };
+
+    // 같은 브라우저의 다른 탭과는 동기화
+    window.addEventListener('storage', e => {
+        if (e.key === LOCAL_KEY) onChange(read());
+    });
+
+    queueMicrotask(() => onChange(read()));
+
+    const newId = () => `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    return {
+        mode: 'local',
+        // 로컬 모드는 이 기기 전용이라 권한 구분·공유가 없습니다.
+        onUser(cb) {
+            cb(null, null);
+        },
+        onAccess(cb) {
+            cb({ shares: new Map(), grants: new Set() });
+        },
+        async signInWithGoogle() {
+            throw new Error('local-mode');
+        },
+        async signOut() {},
+        async write({ add = [], update = [], remove = [] }) {
+            const createdAt = new Date().toISOString();
+            const changes = new Map(update);
+            const removed = new Set(remove);
+            const list = read()
+                .filter(r => !removed.has(r.id))
+                .map(r => (changes.has(r.id) ? withoutUndefined({ ...r, ...changes.get(r.id) }) : r));
+            add.forEach(data => list.push({ ...withoutUndefined(data), id: newId(), createdAt }));
+            save(list);
+        },
+        async claimShare() {
+            throw new Error('local-mode');
+        }
+    };
+}
+
+/** 환경에 맞는 저장소를 생성합니다. */
+export async function createStore(onChange) {
+    if (!isConfigured(FIREBASE_CONFIG)) {
+        console.warn('[store] Firebase 설정이 비어 있어 임시(로컬) 모드로 실행합니다. config.js 를 확인하세요.');
+        return createLocalStore(onChange);
+    }
+    try {
+        return await createCloudStore(onChange);
+    } catch (err) {
+        console.error('[store] Firebase 초기화 실패 — 임시(로컬) 모드로 전환합니다.', err);
+        return createLocalStore(onChange);
+    }
+}

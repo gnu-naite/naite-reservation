@@ -6,7 +6,12 @@ rules_version = '2';
 //
 // - 보기: 누구나
 // - 예약 생성: 로그인(익명 포함)한 사용자. 작성자 uid 가 함께 저장됩니다.
-// - 수정/삭제: 작성자 본인 또는 관리자
+// - 수정/삭제: 작성자 본인, 관리자, 또는 공유 링크를 연 기기
+//
+// 공유 링크
+//   naite_shares/{shareId}               { ownerUid, key }  만든 사람만 읽기
+//   naite_access/{uid}/grants/{shareId}  { key }            링크의 key 가 맞아야 생성
+//   예약 문서의 shareId 가 같은 예약들(고정 예약 전 회차)이 한 링크로 묶입니다.
 // ============================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -14,6 +19,11 @@ service cloud.firestore {
     // ▼ 관리자 UID 목록 — config.js 의 ADMIN_UIDS 와 똑같이 맞춰주세요.
     function adminUids() {
       return ['l6wAZEj3oiXO3h4gX7Osq1jQOHH2'];
+    }
+
+    // 예약 컬렉션: 정식 + 베타(테스트용)
+    function reservationCollections() {
+      return ['naite_reservations', 'naite_reservations_beta'];
     }
 
     function signedIn() {
@@ -29,6 +39,32 @@ service cloud.firestore {
       return signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
     }
 
+    function validShareId(sid) {
+      return sid is string && sid.matches('^sh_[A-Za-z0-9]{20}$');
+    }
+
+    function sharePath(sid) {
+      return /databases/$(database)/documents/naite_shares/$(sid);
+    }
+
+    // 이 공유 링크를 만든 사람 (같은 배치에서 막 만드는 중이어도 인정)
+    function ownsShare(sid) {
+      return signedIn() && validShareId(sid)
+        && getAfter(sharePath(sid)).data.ownerUid == request.auth.uid;
+    }
+
+    // 링크를 열어 수정 권한을 받은 기기
+    function hasGrant(sid) {
+      return signedIn() && validShareId(sid)
+        && exists(/databases/$(database)/documents/naite_access/$(request.auth.uid)/grants/$(sid));
+    }
+
+    // 현재 예약이 속한 공유 링크의 권한이 있는지
+    function canUseShare() {
+      return 'shareId' in resource.data
+        && (hasGrant(resource.data.shareId) || ownsShare(resource.data.shareId));
+    }
+
     function isValidReservation(d) {
       return d.keys().hasAll(['date', 'startTime', 'endTime', 'teamName', 'userName', 'peopleCount', 'purpose'])
         && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
@@ -40,21 +76,55 @@ service cloud.firestore {
         && d.purpose is string && d.purpose.size() <= 20;
     }
 
-    match /naite_reservations/{docId} {
-      allow read: if true;
+    // shareId 는 한 번 붙으면 바꿀 수 없습니다.
+    // 예외: 링크가 없던 기존 예약에 작성자가 자기 링크를 새로 붙이는 경우
+    function shareIdUnchangedOrAttached() {
+      return request.resource.data.get('shareId', '') == resource.data.get('shareId', '')
+        || (!('shareId' in resource.data) && isOwner() && ownsShare(request.resource.data.shareId));
+    }
+
+    match /{col}/{docId} {
+      allow read: if col in reservationCollections();
 
       // 생성: 로그인 필수 + 작성자 uid 는 반드시 본인
-      allow create: if signedIn()
+      //       shareId 를 붙이려면 그 링크를 만들었거나 권한을 받은 기기여야 함
+      allow create: if col in reservationCollections()
+        && signedIn()
         && isValidReservation(request.resource.data)
-        && request.resource.data.ownerUid == request.auth.uid;
+        && request.resource.data.ownerUid == request.auth.uid
+        && (!('shareId' in request.resource.data)
+            || ownsShare(request.resource.data.shareId)
+            || hasGrant(request.resource.data.shareId));
 
-      // 수정: 작성자 또는 관리자. 작성자 정보는 바꿀 수 없음
-      allow update: if (isOwner() || isAdmin())
+      // 수정: 작성자, 관리자, 공유 권한. 작성자 정보는 바꿀 수 없음
+      allow update: if col in reservationCollections()
+        && (isOwner() || isAdmin() || canUseShare())
         && isValidReservation(request.resource.data)
-        && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '');
+        && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+        && shareIdUnchangedOrAttached();
 
-      // 삭제: 작성자 또는 관리자
-      allow delete: if isOwner() || isAdmin();
+      // 삭제: 작성자, 관리자, 공유 권한
+      allow delete: if col in reservationCollections()
+        && (isOwner() || isAdmin() || canUseShare());
+    }
+
+    // 공유 링크 — key 는 만든 사람만 읽을 수 있고, 한 번 만들면 바꿀 수 없음
+    match /naite_shares/{sid} {
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if signedIn() && validShareId(sid)
+        && request.resource.data.keys().hasOnly(['ownerUid', 'key', 'createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.key is string
+        && request.resource.data.key.matches('^[A-Za-z0-9]{32}$');
+    }
+
+    // 링크를 연 기기의 수정 권한 — 자기 uid 아래에만, key 가 맞을 때만
+    match /naite_access/{uid}/grants/{sid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && validShareId(sid)
+        && request.resource.data.keys().hasOnly(['key', 'createdAt'])
+        && request.resource.data.key == get(sharePath(sid)).data.key;
     }
 
     // 나머지 경로는 전부 차단
