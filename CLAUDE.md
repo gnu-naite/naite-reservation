@@ -30,6 +30,18 @@
 - 정식 예약을 베타로 복사: 규칙상 **관리자만**, 베타 컬렉션에 한해 작성자(`ownerUid`)를 그대로 둔 채 만들 수 있습니다.
   관리자로 로그인한 브라우저에서 베타 페이지를 열고, 정식 문서를 같은 id 로 베타에 `set` (베타에 이미 있는 id 는 건너뜀, `shareId` 는 빼고 복사).
   원래 작성 기기에서는 베타 복사본도 수정할 수 있습니다.
+  - 2026-09-28 정식 208건을 베타로 복사함 (정식은 읽기만, 변경 없음). 다시 맞출 때는 관리자 세션의 베타 페이지 콘솔에서:
+    ```js
+    const { getApp } = await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js');
+    const fs = await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js');
+    const db = fs.getFirestore(getApp());
+    const have = new Set((await fs.getDocs(fs.collection(db, 'naite_reservations_beta'))).docs.map(d => d.id));
+    for (const d of (await fs.getDocs(fs.collection(db, 'naite_reservations'))).docs) {
+        if (have.has(d.id)) continue;
+        const { shareId, ...data } = d.data();
+        await fs.setDoc(fs.doc(db, 'naite_reservations_beta', d.id), data);
+    }
+    ```
 - 베타에만 있는 기능: 공유 링크 / 권한 부여 배너 / 공유 창(자동 복사·복사하기·카카오톡으로 보내기) /
   수정 화면의 한 번↔고정 전환 / 화면 정리(오늘 일정 한 줄 행, 카드 중첩 제거)
 - 카카오톡 공유: 카카오디벨로퍼스 앱 `naite res`. `beta/config.js` 의 `KAKAO_JS_KEY`(공개 값).
