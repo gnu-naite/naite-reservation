@@ -14,26 +14,18 @@ const FIREBASE_VERSION = '12.19.0';
 // 컬렉션별로 따로 저장 (정식: naite_reservations_local 그대로, 베타는 분리)
 const LOCAL_KEY = `${COLLECTION_NAME}_local`;
 
-/* 공유 링크 — 정식/베타가 같은 컬렉션을 씁니다 (id 가 무작위라 섞이지 않음)
-   naite_shares/{shareId}              { ownerUid, key }  만든 사람만 읽기 가능
-   naite_access/{uid}/grants/{shareId} { key }            링크를 연 기기의 수정 권한 */
-const SHARES = 'naite_shares';
-const ACCESS = 'naite_access';
-// 기기(uid)별 표시 이름 { kakaoNick, name } — 관리자만 전체를 봅니다.
+// 기기(uid)별 표시 이름 { kakaoNick, name } — 카톡 닉네임이 있으면 베타 예약을 수정·취소할 수 있음. 관리자만 전체를 봅니다.
 const USERS = 'naite_users';
 // 예약 수정·취소 기록 { action, uid, col, batch, at, res } — 관리자만 읽습니다.
 const LOGS = 'naite_logs';
 const LOG_FIELDS = ['date', 'startTime', 'endTime', 'teamName', 'userName'];
 
-const emptyAccess = () => ({ shares: new Map(), grants: new Map(), teams: new Map() });
-
 const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-// ponytail: b % 62 는 약간 치우치지만 32자리 키의 추측 불가능성엔 영향 없음
-const randomId = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALNUM[b % ALNUM.length]).join('');
 
-/** 새 공유 링크 한 벌 (id 는 예약 문서에 공개, key 는 링크에만 담기는 비밀값) */
-export function newShare() {
-    return { id: `sh_${randomId(20)}`, key: randomId(32) };
+/** 추측할 수 없는 무작위 문자열 (카카오 로그인 state 값 등) */
+export function randomToken(n = 32) {
+    // ponytail: b % 62 는 약간 치우치지만 32자리 값의 추측 불가능성엔 영향 없음
+    return Array.from(crypto.getRandomValues(new Uint8Array(n)), b => ALNUM[b % ALNUM.length]).join('');
 }
 
 /** 값이 undefined 인 필드를 뺍니다. */
@@ -60,67 +52,27 @@ async function createCloudStore(onChange) {
     const db = fs.getFirestore(app);
     const col = fs.collection(db, COLLECTION_NAME);
 
-    /* ----- 이 기기의 공유 권한 -----
-       shares: 내가 만든 공유 링크 (shareId → key)
-       grants: 링크를 열어 받은 수정 권한 (shareId → key, 팀 링크를 다시 공유할 때 씀)
-       teams:  그중 팀 링크 (shareId → { name, since }) — 예약 창의 '내 팀' 목록 */
-    const accessListeners = new Set();
-    let access = emptyAccess();
-    let accessUid = null;
-    let unsubAccess = [];
-    let ownTeams = new Map();
-    let grantTeams = new Map();
-    const teamCache = new Map();   // shareId → { name } | null — 팀 이름은 바뀌지 않아 한 번만 읽습니다
-    const emitAccess = () => {
-        access = { ...access, teams: new Map([...grantTeams, ...ownTeams]) };
-        accessListeners.forEach(fn => fn(access));
-    };
-
-    const watchAccess = uid => {
-        if (uid === accessUid) return;
-        accessUid = uid;
-        unsubAccess.forEach(u => u());
-        unsubAccess = [];
-        access = emptyAccess();
-        ownTeams = new Map();
-        grantTeams = new Map();
-        emitAccess();
+    /* ----- 이 기기의 표시 이름 (카톡 연동 여부) ----- */
+    const profileListeners = new Set();
+    let profile;              // undefined: 아직 모름 / null: 문서 없음 / { kakaoNick, name }
+    let profileUid = null;
+    let unsubProfile = () => {};
+    const watchProfile = uid => {
+        if (uid === profileUid) return;
+        profileUid = uid;
+        unsubProfile();
+        unsubProfile = () => {};
+        profile = undefined;
+        profileListeners.forEach(fn => fn(undefined));   // 계정이 바뀌면 새 정보가 올 때까지 '모름'
         if (!uid) return;
-
-        const onErr = err => console.error('[store] 공유 권한 구독 실패:', err);
-        unsubAccess.push(fs.onSnapshot(
-            fs.query(fs.collection(db, SHARES), fs.where('ownerUid', '==', uid)),
+        unsubProfile = fs.onSnapshot(
+            fs.doc(db, USERS, uid),
             snap => {
-                access = { ...access, shares: new Map(snap.docs.map(d => [d.id, d.data().key])) };
-                ownTeams = new Map(snap.docs.filter(d => d.data().teamName)
-                    .map(d => [d.id, { name: d.data().teamName, since: d.data().createdAt }]));
-                emitAccess();
+                profile = snap.data() ?? null;
+                profileListeners.forEach(fn => fn(profile));
             },
-            onErr
-        ));
-        unsubAccess.push(fs.onSnapshot(
-            fs.collection(db, ACCESS, uid, 'grants'),
-            async snap => {
-                access = { ...access, grants: new Map(snap.docs.map(d => [d.id, d.data().key])) };
-                emitAccess();
-                // 받은 링크가 팀 링크인지(팀 이름이 있는지) 공유 문서에서 읽어옵니다.
-                await Promise.all(snap.docs.filter(d => !teamCache.has(d.id)).map(async d => {
-                    try {
-                        const s = await fs.getDoc(fs.doc(db, SHARES, d.id));
-                        const name = s.data()?.teamName;
-                        teamCache.set(d.id, name ? { name } : null);
-                    } catch (err) {
-                        console.error('[store] 팀 정보 읽기 실패:', err);   // 다음 변경 때 다시 시도
-                    }
-                }));
-                if (uid !== accessUid) return;
-                grantTeams = new Map(snap.docs
-                    .filter(d => teamCache.get(d.id))
-                    .map(d => [d.id, { ...teamCache.get(d.id), since: d.data().createdAt }]));
-                emitAccess();
-            },
-            onErr
-        ));
+            err => console.error('[store] 내 정보 구독 실패:', err)
+        );
     };
 
     /* ----- 인증 -----
@@ -135,7 +87,7 @@ async function createCloudStore(onChange) {
 
     au.onAuthStateChanged(auth, user => {
         currentUser = user;
-        watchAccess(user?.uid ?? null);
+        watchProfile(user?.uid ?? null);
         if (user) {
             resolveFirstUser(user);
         } else {
@@ -182,10 +134,10 @@ async function createCloudStore(onChange) {
             cb(currentUser, authError);
         },
 
-        /** 공유 권한이 바뀔 때마다 cb({ shares, grants }) 호출 */
-        onAccess(cb) {
-            accessListeners.add(cb);
-            cb(access);
+        /** 이 기기의 표시 이름이 바뀔 때마다 cb(undefined(모름) | null | { kakaoNick, name }) 호출 */
+        onProfile(cb) {
+            profileListeners.add(cb);
+            if (profile !== undefined) cb(profile);
         },
 
         /**
@@ -222,15 +174,13 @@ async function createCloudStore(onChange) {
         /**
          * 추가·수정·삭제를 한 배치로 저장합니다. 중간에 실패해도 반쯤 저장되는 일이 없습니다.
          * (고정 예약은 최대 60회라 배치 한도 500건 안에 들어갑니다)
-         *   share   새 공유 링크 { id, key, teamName? } — 예약과 같은 배치에서 만들어야 보안 규칙을 통과합니다
-         *           teamName 이 있으면 팀 링크 (그 팀의 모든 예약에 쓰임)
          *   add     [data]         새 예약 (작성자 uid 자동 기록)
          *   update  [[id, data]]   값이 undefined 인 필드는 삭제
          *   remove  [id]
          * 추가·수정한 예약에는 마지막으로 손댄 기기(editedBy)를 남기고,
-         * 수정·취소는 같은 배치로 변경 기록(naite_logs)에 남깁니다. (관리자 [로그 보기])
+         * 수정·취소는 같은 배치로 변경 기록(naite_logs)에 남깁니다. (관리자 '최근 수정·취소')
          */
-        async write({ share, add = [], update = [], remove = [] }) {
+        async write({ add = [], update = [], remove = [] }) {
             const uid = await getUid();
             const createdAt = new Date().toISOString();
             const batch = fs.writeBatch(db);
@@ -246,9 +196,6 @@ async function createCloudStore(onChange) {
             update.forEach(([id, data]) => log('update', current.get(id) && { ...current.get(id), ...data }));
             remove.forEach(id => log('delete', current.get(id)));
 
-            if (share) {
-                batch.set(fs.doc(db, SHARES, share.id), withoutUndefined({ ownerUid: uid, key: share.key, teamName: share.teamName, createdAt }));
-            }
             add.forEach(data => {
                 batch.set(fs.doc(col), { ...withoutUndefined(data), ...(uid ? { ownerUid: uid } : {}), ...by, createdAt });
             });
@@ -263,13 +210,6 @@ async function createCloudStore(onChange) {
             await batch.commit();
         },
 
-        /** 공유 링크의 key 를 이 기기의 수정 권한으로 등록 (같은 링크를 다시 열어도 안전) */
-        async claimShare(shareId, key) {
-            const uid = await getUid();
-            if (!uid) throw new Error('no-auth');
-            await fs.setDoc(fs.doc(db, ACCESS, uid, 'grants', shareId), { key, createdAt: new Date().toISOString() });
-        },
-
         /** 이 기기의 표시 이름 저장 ({ kakaoNick } 또는 { name }, 나머지 필드는 유지) */
         async saveProfile(fields) {
             const uid = await getUid();
@@ -277,13 +217,25 @@ async function createCloudStore(onChange) {
             await fs.setDoc(fs.doc(db, USERS, uid), { ...fields, updatedAt: new Date().toISOString() }, { merge: true });
         },
 
-        /** 관리자용: 이 예약표의 최근 수정·취소 기록 (최신순) */
-        async readLogs(max = 300) {
+        /** 관리자용: 이 예약표의 수정·취소 기록 구독. cb(기록 배열, 최신순), 해제 함수 반환 */
+        watchLogs(cb) {
             // 이 예약표 것만 받아 정렬 (col + at 정렬을 함께 쓰면 복합 색인이 필요해서 정렬은 여기서)
-            const snap = await fs.getDocs(fs.query(fs.collection(db, LOGS), fs.where('col', '==', COLLECTION_NAME)));
-            return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                .sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0))
-                .slice(0, max);
+            return fs.onSnapshot(
+                fs.query(fs.collection(db, LOGS), fs.where('col', '==', COLLECTION_NAME)),
+                // 방금 쓴 기록은 서버 시각이 오기 전까지 추정 시각으로 정렬·표시
+                snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }))
+                    .sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0))),
+                err => console.error('[store] 기록 구독 실패:', err)
+            );
+        },
+
+        /** 관리자용: 기록 삭제 (배치 한도 500건이라 나눠서) */
+        async deleteLogs(ids) {
+            for (let i = 0; i < ids.length; i += 450) {
+                const batch = fs.writeBatch(db);
+                ids.slice(i, i + 450).forEach(id => batch.delete(fs.doc(db, LOGS, id)));
+                await batch.commit();
+            }
         },
 
         /** 관리자용: 기기별 표시 이름 목록 구독. cb(Map uid → { kakaoNick, name }), 해제 함수 반환 */
@@ -326,9 +278,7 @@ function createLocalStore(onChange) {
         onUser(cb) {
             cb(null, null);
         },
-        onAccess(cb) {
-            cb(emptyAccess());
-        },
+        onProfile() {},
         async signInWithGoogle() {
             throw new Error('local-mode');
         },
@@ -343,13 +293,11 @@ function createLocalStore(onChange) {
             add.forEach(data => list.push({ ...withoutUndefined(data), id: newId(), createdAt }));
             save(list);
         },
-        async claimShare() {
-            throw new Error('local-mode');
-        },
         async saveProfile() {},
-        async readLogs() {
-            return [];
+        watchLogs() {
+            return () => {};
         },
+        async deleteLogs() {},
         watchUsers() {
             return () => {};
         }

@@ -1407,7 +1407,7 @@ button {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: 60vh;
+    max-height: 420px;
     overflow-y: auto;
     list-style: none;
 }
@@ -1434,4 +1434,22 @@ button {
 .log-item .log-who {
     color: var(--text-soft);
     font-size: .76rem;
+}
+
+/* 기록 카드 날짜 */
+.log-day {
+    min-width: 7em;
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 600;
+}
+
+.icon-btn:disabled {
+    opacity: .35;
+    cursor: default;
+}
+
+.log-clear {
+    margin-top: 10px;
+    color: var(--danger);
 }

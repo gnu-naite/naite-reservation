@@ -2,7 +2,7 @@
    나이테 동아리방 예약 — 메인 로직
    ============================================================ */
 
-import { createStore, newShare } from './store.js?v=3';
+import { createStore, randomToken } from './store.js?v=6';
 import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
 
 /* ---------- i18n 사전 ---------- */
@@ -40,10 +40,6 @@ const I18N = {
         "modal.editToOnce": "한 번 예약으로 바뀌고, 아직 남은 고정 예약 {count}회는 취소됩니다.",
         "modal.labelTeam": "팀명",
         "modal.phTeam": "예: 밴드팀",
-        "modal.labelName": "예약자 이름",
-        "modal.phName": "홍길동",
-        "modal.labelCount": "사용 인원수",
-        "modal.phCount": "예: 5",
         "modal.labelPurpose": "사용 목적",
         "modal.optEnsemble": "🎸 합주",
         "modal.optClass": "📚 레슨",
@@ -97,51 +93,41 @@ const I18N = {
         "err.allOverlap": "선택한 기간의 모든 주차에 이미 예약이 있습니다. 시간을 바꿔주세요.",
         "err.repeatRange": "반복 종료일은 첫 예약 날짜보다 뒤여야 합니다.",
         "err.tooMany": "반복 횟수가 너무 많습니다. 종료일을 앞당겨주세요. (최대 {max}회)",
-        "err.permission": "권한이 없습니다. 예약한 사람에게 공유 링크를 받아주세요.",
         "err.permissionNew": "서버가 예약 저장을 거부했습니다. 관리자에게 알려주세요. (보안 규칙 설정 확인 필요)",
-        "modal.shareNote": "새 팀이면 팀 톡방에 올릴 팀 링크가 만들어집니다.",
-        "modal.newTeam": "➕ 새 팀 만들기",
         "main.bookDay": "이 날 예약",
         "main.mine": "내 예약 {count}건",
         "status.fromPrev": "전날부터",
         "err.past": "이미 지난 시간은 예약할 수 없습니다.",
-        "confirm.dupTeamTitle": "같은 이름의 예약",
-        "confirm.dupTeam": "[{team}] 이름으로 된 예약이 이미 있습니다.\n\n같은 팀이면 팀 톡방 공지의 팀 링크를 먼저 열어주세요. 그러면 목록에서 고를 수 있습니다.\n\n다른 팀이라면 새 팀으로 만들까요?",
-        "confirm.dupTeamYes": "새 팀 만들기",
-        "share.titleTeam": "팀 링크",
-        "share.bodyTeam": "팀 톡방에 올리고 공지로 고정해 두세요. 링크를 한 번 연 팀원은 이 팀의 모든 예약을 수정·취소할 수 있습니다.",
-        "share.kakaoTextTeam": "[{team}] 동아리방 예약 팀 링크\n버튼을 한 번 누르면 이 팀의 모든 예약을 수정·취소할 수 있습니다.",
-        "grant.doneTeamLink": "[{team}] 팀 권한이 생겼습니다. 이 팀의 모든 예약을 수정·취소할 수 있습니다.",
         "kakao.connect": "카톡 닉네임 연결",
         "kakao.linked": "카톡 닉네임 '{nick}'(으)로 연결했습니다.",
         "kakao.fail": "카톡 닉네임 연결에 실패했습니다.",
-        "admin.logs": "로그 보기",
-        "log.title": "수정·취소 기록",
+        "kakao.askTitle": "카카오톡 닉네임 연동",
+        "kakao.ask": "예약하거나 수정·취소하려면 카카오톡 닉네임 연동이 필요합니다. (처음 한 번만)\n\n예약자 이름 대신 닉네임이 기록되고, 누가 수정·취소했는지 관리자가 확인하는 용도로만 쓰입니다. 지금 연동할까요?",
+        "kakao.askYes": "카카오톡 연동",
+        "kakao.later": "나중에 하단의 [카톡 닉네임 연결]을 눌러 연동할 수 있습니다. 연동 전에는 예약·수정·취소가 막혀 있습니다.",
+        "lock.needKakao": "카톡 닉네임을 연동하면 예약하고 수정·취소할 수 있습니다. (하단 [카톡 닉네임 연결])",
+        "err.permission": "권한이 없습니다. 하단 [카톡 닉네임 연결]로 카카오톡 연동을 먼저 해주세요.",
+        "log.admin": "관리자",
+        "log.clear": "이 날 기록 삭제",
+        "log.clearTitle": "기록 삭제",
+        "log.clearConfirm": "{day} 기록 {n}건을 모두 삭제할까요? 다른 날짜의 기록은 그대로 남습니다. 되돌릴 수 없습니다.",
+        "log.clearYes": "삭제",
+        "log.cleared": "{day} 기록을 삭제했습니다.",
+        "log.clearFail": "기록을 삭제하지 못했습니다.",
+        "log.prevDay": "이전 날",
+        "log.nextDay": "다음 날",
+        "log.title": "최근 수정·취소",
         "log.empty": "아직 기록이 없습니다.",
-        "log.fail": "기록을 불러오지 못했습니다.",
         "log.delete": "취소",
         "log.update": "수정",
-        "log.more": "외 {n}건",
+        "log.one": "[{team}] {slot} 예약 취소",
+        "log.edit": "[{team}] {slot}(으)로 수정",
+        "log.seriesAll": "[{team}] 고정 예약 전체 취소 ({n}회)",
+        "log.toOnce": "[{team}] {slot} 한 번 예약으로 변경 · 남은 {n}회 취소",
         "confirm.toOnceTitle": "한 번 예약으로 변경",
         "confirm.toOnce": "이 회차만 남기고, 아직 남은 고정 예약 {count}회를 취소할까요? 되돌릴 수 없습니다.",
         "confirm.toOnceYes": "변경하기",
 
-        "lock.notOwner": "예약한 사람에게 공유 링크를 받으면 수정·취소할 수 있습니다.",
-        "btn.share": "공유",
-        "share.title": "예약 완료",
-        "share.titleCard": "수정 링크 공유",
-        "share.body": "이 링크를 팀 카톡방에 보내면, 링크를 연 기기에서도 이 예약을 수정·취소할 수 있습니다.",
-        "share.copy": "복사하기",
-        "share.copiedBtn": "복사됨",
-        "share.send": "카카오톡으로 보내기",
-        "share.text": "[{team}] 동아리방 예약 수정 링크",
-        "share.kakaoText": "[{team}] 동아리방 예약\n아래 버튼을 누르면 이 예약을 수정·취소할 수 있는 권한이 생깁니다.",
-        "share.kakaoButton": "수정 권한 받기",
-        "share.copied": "링크를 복사했습니다. 카톡방에 붙여넣어 주세요.",
-        "share.copyFail": "자동 복사가 막혀 있습니다. 링크를 길게 눌러 복사해주세요.",
-        "grant.done": "권한이 부여되었습니다.",
-        "grant.doneTeam": "권한이 부여되었습니다. [{team}] 예약을 이 기기에서 수정·취소할 수 있습니다.",
-        "share.claimFail": "공유 링크가 올바르지 않습니다. 예약한 사람에게 다시 받아주세요.",
         "admin.badge": "관리자",
         "admin.login": "관리자 로그인",
         "admin.logout": "로그아웃",
@@ -198,10 +184,6 @@ const I18N = {
         "modal.editToOnce": "This becomes a one-off, and the {count} remaining weekly bookings are cancelled.",
         "modal.labelTeam": "Team name",
         "modal.phTeam": "e.g. Rock Band",
-        "modal.labelName": "Booked by",
-        "modal.phName": "John Doe",
-        "modal.labelCount": "Headcount",
-        "modal.phCount": "e.g. 5",
         "modal.labelPurpose": "Purpose",
         "modal.optEnsemble": "🎸 Ensemble",
         "modal.optClass": "📚 Lesson",
@@ -255,51 +237,41 @@ const I18N = {
         "err.allOverlap": "Every week in that range is already booked. Please pick another time.",
         "err.repeatRange": "The end date must be after the first date.",
         "err.tooMany": "Too many repeats. Please pick an earlier end date. (max {max})",
-        "err.permission": "Permission denied. Ask the person who booked for the share link.",
         "err.permissionNew": "The server refused to save this booking. Please tell an admin. (security rules need checking)",
-        "modal.shareNote": "For a new team, you get a team link to post in the team chat.",
-        "modal.newTeam": "+ New team",
         "main.bookDay": "Book this day",
         "main.mine": "My bookings: {count}",
         "status.fromPrev": "from prev. day",
         "err.past": "You can't book a time that has already passed.",
-        "confirm.dupTeamTitle": "Same name exists",
-        "confirm.dupTeam": "There are already bookings named [{team}].\n\nIf that's your team, open the team link pinned in your team chat first; then you can pick it from the list.\n\nCreate a new team anyway?",
-        "confirm.dupTeamYes": "Create new team",
-        "share.titleTeam": "Team link",
-        "share.bodyTeam": "Post this in your team chat and pin it. Anyone who opens it once can edit or cancel every booking of this team.",
-        "share.kakaoTextTeam": "[{team}] club room team link\nTap the button once to edit or cancel any booking of this team.",
-        "grant.doneTeamLink": "You're now in [{team}]. You can edit or cancel all of this team's bookings.",
         "kakao.connect": "Link KakaoTalk nickname",
         "kakao.linked": "Linked KakaoTalk nickname '{nick}'.",
         "kakao.fail": "Couldn't link your KakaoTalk nickname.",
-        "admin.logs": "View log",
-        "log.title": "Edit & cancel log",
+        "kakao.askTitle": "Link KakaoTalk",
+        "kakao.ask": "To book, edit or cancel, link your KakaoTalk nickname (one time only).\n\nYour nickname is recorded instead of a name, and admins use it to see who edited or cancelled. Link now?",
+        "kakao.askYes": "Link KakaoTalk",
+        "kakao.later": "You can link later with [Link KakaoTalk nickname] at the bottom. Until then you can't book, edit or cancel.",
+        "lock.needKakao": "Link your KakaoTalk nickname to book, edit or cancel. ([Link KakaoTalk nickname] at the bottom)",
+        "err.permission": "Permission denied. Link your KakaoTalk nickname at the bottom first.",
+        "log.admin": "Admin",
+        "log.clear": "Delete this day's log",
+        "log.clearTitle": "Delete log",
+        "log.clearConfirm": "Delete all {n} records from {day}? Other days are kept. This cannot be undone.",
+        "log.clearYes": "Delete",
+        "log.cleared": "Deleted the log for {day}.",
+        "log.clearFail": "Couldn't delete the log.",
+        "log.prevDay": "Previous day",
+        "log.nextDay": "Next day",
+        "log.title": "Recent edits & cancellations",
         "log.empty": "No records yet.",
-        "log.fail": "Couldn't load the log.",
         "log.delete": "Cancelled",
         "log.update": "Edited",
-        "log.more": "+{n} more",
+        "log.one": "[{team}] {slot} cancelled",
+        "log.edit": "[{team}] changed to {slot}",
+        "log.seriesAll": "[{team}] whole weekly booking cancelled ({n})",
+        "log.toOnce": "[{team}] {slot} made one-off · {n} remaining cancelled",
         "confirm.toOnceTitle": "Change to one-off",
         "confirm.toOnce": "Keep only this occurrence and cancel the {count} remaining weekly bookings? This cannot be undone.",
         "confirm.toOnceYes": "Change",
 
-        "lock.notOwner": "Get the share link from the person who booked to edit or cancel.",
-        "btn.share": "Share",
-        "share.title": "Booked",
-        "share.titleCard": "Share edit link",
-        "share.body": "Send this link to your team chat. Any device that opens it can edit or cancel this booking.",
-        "share.copy": "Copy",
-        "share.copiedBtn": "Copied",
-        "share.send": "Send via KakaoTalk",
-        "share.text": "[{team}] club room booking edit link",
-        "share.kakaoText": "[{team}] club room booking\nTap the button below to get permission to edit or cancel it.",
-        "share.kakaoButton": "Get edit access",
-        "share.copied": "Link copied. Paste it into your group chat.",
-        "share.copyFail": "Copying is blocked here. Long-press the link to copy it.",
-        "grant.done": "Permission granted.",
-        "grant.doneTeam": "Permission granted. This device can now edit or cancel the [{team}] booking.",
-        "share.claimFail": "This share link is invalid. Ask the person who booked for a new one.",
         "admin.badge": "Admin",
         "admin.login": "Admin sign-in",
         "admin.logout": "Sign out",
@@ -327,12 +299,8 @@ const I18N = {
 
 const LS_LANG = 'naite_lang';
 const LS_THEME = 'naite_theme';
-const LS_LAST = 'naite_last';            // 마지막 예약 입력값 (다음 새 예약에 미리 채움)
-const LS_KAKAO = 'naite_kakao';          // 카톡 닉네임 연결: 'tried'(자동 시도함) | 'done' | 'declined'
+const LS_KAKAO_ASKED = 'naite_kakao_asked';   // 첫 방문 카톡 연동 안내를 이미 띄웠는지
 const LS_KAKAO_STATE = 'naite_kakao_state';
-const LS_PENDING_GRANT = 'naite_pending_grant';
-const NEW_TEAM = '__new';
-const TEAM_IDLE_MS = 28 * 24 * 60 * 60 * 1000;   // 4주 넘게 쓰지 않은 팀은 목록에서 접습니다
 const THEMES = ['default', 'forest', 'ocean', 'sunset', 'mono', 'dark'];
 
 /* ---------- 상태 ---------- */
@@ -345,8 +313,10 @@ let resType = 'once';             // 'once' 한 번만 | 'weekly' 고정(매주)
 let store = null;
 let currentUser = null;           // Firebase 사용자 (익명 또는 구글)
 let authUnavailable = false;      // 인증을 쓸 수 없는 상태 (콘솔에서 미설정 등)
-let access = { shares: new Map(), grants: new Map(), teams: new Map() };  // 만든 링크 / 받은 권한 / 그중 팀 링크
+let myProfile;                    // 이 기기의 { kakaoNick, name } (undefined: 아직 모름, null: 없음)
 let users = new Map();            // 관리자용: uid → { kakaoNick, name }
+let logs = [];                    // 관리자용: 수정·취소 기록 (최신순)
+let logDay = null;                // 관리자용: 기록 카드에서 보고 있는 날짜 'YYYY-MM-DD' (null 이면 가장 최근)
 let unwatchUsers = null;
 let resolveUserReady;
 const userReady = new Promise(r => (resolveUserReady = r));   // 익명 로그인까지 끝났을 때
@@ -363,21 +333,11 @@ function isAdmin() {
 function canEdit(r) {
     if (!store || store.mode === 'local') return true;
     if (authUnavailable) return true;   // 인증 미설정 상태에선 서버 규칙에 판단을 맡김
-    if (isAdmin()) return true;
-    if (r.shareId && (access.grants.has(r.shareId) || access.shares.has(r.shareId))) return true;
-    return !!currentUser && !!r.ownerUid && r.ownerUid === currentUser.uid;
+    return isAdmin() || kakaoLinked();   // 베타: 카톡 닉네임을 연동한 사람은 누구나 모든 예약을
 }
 
-/**
- * 공유 버튼을 보여줄지 — 링크를 만들었거나 받은 기기(링크 key 를 아는 기기)에서만.
- * 링크가 없는 기존 예약은 작성자 기기에서 누르는 순간 새로 만듭니다.
- */
-function canShare(r) {
-    if (!store || store.mode !== 'cloud' || !currentUser) return false;
-    return r.shareId ? !!shareKey(r.shareId) : r.ownerUid === currentUser.uid;
-}
-
-const shareKey = id => access.shares.get(id) ?? access.grants.get(id);
+/** 이 기기가 카톡 닉네임을 연동했는지 */
+const kakaoLinked = () => !!myProfile?.kakaoNick;
 
 /** 고정 예약을 한 번 예약으로 바꿀 때 함께 취소될 회차 (아직 시작 안 한 나머지) */
 function seriesLeftovers(res) {
@@ -404,13 +364,13 @@ const el = {
     upcoming: $('upcomingList'),
     mineChip: $('mineChip'),
     dayReserveBtn: $('dayReserveBtn'),
-    teamSelect: $('teamSelect'),
-    teamName: $('teamName'),
     kakaoLinkBtn: $('kakaoLinkBtn'),
-    logViewBtn: $('logViewBtn'),
-    logModal: $('logModal'),
+    logCard: $('logCard'),
     logList: $('logList'),
-    logCloseBtn: $('logCloseBtn'),
+    logDayLabel: $('logDayLabel'),
+    logPrev: $('logPrev'),
+    logNext: $('logNext'),
+    logClearBtn: $('logClearBtn'),
 
     resModal: $('reservationModal'),
     modalTitle: $('modalTitle'),
@@ -427,20 +387,6 @@ const el = {
     repeatSummary: $('repeatSummary'),
     editScopeHint: $('editScopeHint'),
     editScopeText: $('editScopeText'),
-    shareNote: $('shareNote'),
-
-    shareModal: $('shareModal'),
-    shareTitle: $('shareTitle'),
-    shareBody: $('shareBody'),
-    shareLink: $('shareLink'),
-    shareCopyBtn: $('shareCopyBtn'),
-    shareSendBtn: $('shareSendBtn'),
-    shareCloseBtn: $('shareCloseBtn'),
-    shareDoneBtn: $('shareDoneBtn'),
-
-    grantBanner: $('grantBanner'),
-    grantText: $('grantText'),
-    grantCloseBtn: $('grantCloseBtn'),
 
     seriesModal: $('seriesModal'),
     seriesMessage: $('seriesMessage'),
@@ -702,11 +648,12 @@ function renderDay() {
         const editable = canEdit(r);
         anyLocked ||= !editable;
 
+        // 예약자(베타는 카톡 닉네임)·인원수는 있을 때만 (베타 새 예약엔 인원수가 없음)
         const meta = [
-            escapeHtml(r.userName),
-            `${escapeHtml(r.peopleCount)}${escapeHtml(t('unit.people'))}`,
+            r.userName && escapeHtml(r.userName),
+            r.peopleCount && `${escapeHtml(r.peopleCount)}${escapeHtml(t('unit.people'))}`,
             escapeHtml(r.purpose)
-        ];
+        ].filter(Boolean);
         if (r.seriesId) {
             meta.push(`<i class="fa-solid fa-repeat"></i> ${escapeHtml(t('status.repeat', { weekday: weekdayLabel(parseDate(r.date)) }))}`);
         }
@@ -729,24 +676,22 @@ function renderDay() {
             </div>
             ${editable ? `
             <div class="res-actions">
-                ${canShare(r) ? `<button class="share-btn" type="button"><i class="fa-solid fa-share-nodes"></i>${escapeHtml(t('btn.share'))}</button>` : ''}
                 <button class="edit-btn" type="button"><i class="fa-solid fa-pen"></i>${escapeHtml(t('btn.edit'))}</button>
                 <button class="delete-btn" type="button"><i class="fa-regular fa-trash-can"></i>${escapeHtml(t('btn.delete'))}</button>
-            </div>` : `
-            <i class="fa-solid fa-lock res-lock" role="img" title="${escapeHtml(t('lock.notOwner'))}" aria-label="${escapeHtml(t('lock.notOwner'))}"></i>`}`;
+            </div>` : myProfile === undefined ? '' : `
+            <i class="fa-solid fa-lock res-lock" role="img" title="${escapeHtml(t('lock.needKakao'))}" aria-label="${escapeHtml(t('lock.needKakao'))}"></i>`}`;
 
-        item.querySelector('.share-btn')?.addEventListener('click', () => handleShare(r));
         item.querySelector('.edit-btn')?.addEventListener('click', () => openEdit(r));
         item.querySelector('.delete-btn')?.addEventListener('click', () => handleDelete(r));
         el.resList.appendChild(item);
     });
 
     // 잠긴 예약이 있을 때만, 목록 아래에 한 번만 안내
-    if (anyLocked) {
+    if (anyLocked && myProfile !== undefined) {   // 연동 여부를 알기 전엔 안내하지 않음
         const note = document.createElement('p');
         note.className = 'res-note';
         note.innerHTML = `<i class="fa-solid fa-lock"></i><span></span>`;
-        note.querySelector('span').textContent = t('lock.notOwner');
+        note.querySelector('span').textContent = t('lock.needKakao');
         el.resList.appendChild(note);
     }
 }
@@ -814,11 +759,11 @@ function renderToday() {
     });
 }
 
-/** 이 기기에서 수정할 수 있는 앞으로의 예약 (관리자는 전부라 제외) */
+/** 이 기기에서 만든 앞으로의 예약 */
 function myUpcoming() {
-    if (!store || store.mode !== 'cloud' || authUnavailable || isAdmin()) return [];
+    if (!store || store.mode !== 'cloud' || !currentUser) return [];
     const now = Date.now();
-    return reservations.filter(r => endTs(r) > now && canEdit(r)).sort((a, b) => startTs(a) - startTs(b));
+    return reservations.filter(r => endTs(r) > now && r.ownerUid === currentUser.uid).sort((a, b) => startTs(a) - startTs(b));
 }
 
 /** '내 예약 N건' 칩 — 누르면 가장 가까운 내 예약 날짜로 이동 */
@@ -829,6 +774,7 @@ function renderMine() {
 }
 
 function userLabel(uid) {
+    if (ADMIN_UIDS.includes(uid)) return t('log.admin');   // 관리자는 카톡 연동과 상관없이 '관리자'
     const u = users.get(uid);
     return [u?.kakaoNick, u?.name].filter(Boolean).join(' / ') || (uid ? uid.slice(0, 6) : '?');
 }
@@ -1013,66 +959,23 @@ function pickDefaultTimes() {
     el.nextDayHint.classList.toggle('hidden', !isEndNextDay(el.start.value, el.end.value));
 }
 
-/* ---------- 팀 선택 ---------- */
-
-/** '내 팀' 목록 — 4주 넘게 예약도 없고 링크도 오래된 팀은 접습니다. */
-function activeTeams() {
-    const cutoff = Date.now() - TEAM_IDLE_MS;
-    return [...access.teams]
-        .filter(([id, team]) => Date.parse(team.since || 0) > cutoff
-            || reservations.some(r => r.shareId === id && endTs(r) > cutoff))
-        .sort((a, b) => a[1].name.localeCompare(b[1].name, 'ko'));
-}
-
-function fillTeamSelect(preferId) {
-    const teams = activeTeams();
-    el.teamSelect.innerHTML = '';
-    teams.forEach(([id, team]) => el.teamSelect.add(new Option(team.name, id)));
-    el.teamSelect.add(new Option(t('modal.newTeam'), NEW_TEAM));
-    el.teamSelect.value = teams.some(([id]) => id === preferId) ? preferId : (teams[0]?.[0] ?? NEW_TEAM);
-    el.teamSelect.classList.toggle('hidden', teams.length === 0);
-    syncTeamInput();
-}
-
-/** 목록에서 고른 팀 id (새 팀이면 null) */
-function selectedTeamId() {
-    if (el.teamSelect.classList.contains('hidden') || el.teamSelect.value === NEW_TEAM) return null;
-    return el.teamSelect.value;
-}
-
-/** 팀을 고르면 이름 칸을 숨기고, '새 팀'이면 이름 칸을 보여줍니다. */
-function syncTeamInput() {
-    const id = selectedTeamId();
-    el.teamName.classList.toggle('hidden', !!id);
-    if (id) el.teamName.value = access.teams.get(id)?.name ?? '';
-    el.shareNote.classList.toggle('hidden', !!id || store?.mode !== 'cloud');   // 새 팀일 때만 팀 링크 안내
-}
-
-function loadLast() {
-    try {
-        return JSON.parse(localStorage.getItem(LS_LAST)) || {};
-    } catch {
-        return {};
-    }
-}
-
 /* ---------- 모달 ---------- */
 function openCreate(date) {
+    // 베타: 예약도 카톡 닉네임을 연동해야 할 수 있습니다 (예약자 이름 대신 닉네임이 기록됨)
+    if (store?.mode === 'cloud' && myProfile === undefined && !isAdmin()) {
+        toast(t('main.loading'));   // 연동 여부를 아직 모름 — 잠시 뒤 다시
+        return;
+    }
+    if (store?.mode === 'cloud' && !canEdit()) {
+        askKakao();
+        return;
+    }
     editingId = null;
     el.form.reset();
-    el.teamName.readOnly = false;
     el.date.value = fmtDate(date);
     el.date.min = fmtDate(new Date());
     el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
     setResType('once');
-
-    // 지난번 입력값을 미리 채웁니다.
-    const last = loadLast();
-    fillTeamSelect(last.teamId);
-    if (!selectedTeamId() && !last.teamId) el.teamName.value = last.teamName ?? '';
-    $('userName').value = last.userName ?? '';
-    $('peopleCount').value = last.peopleCount ?? '';
-    if (last.purpose) $('purpose').value = last.purpose;
 
     el.modalTitle.textContent = t('modal.newResTitle');
     el.submitBtn.textContent = t('modal.btnSubmit');
@@ -1084,13 +987,7 @@ function openEdit(res) {
     editingId = res.id;
     el.date.value = res.date;
     el.date.min = '';
-    // 수정할 때는 팀을 바꿀 수 없습니다. 링크로 묶인 예약은 팀명도 고정 (팀 링크면 규칙이 팀명 변경을 거부)
-    el.teamSelect.classList.add('hidden');
-    el.teamName.classList.remove('hidden');
-    el.teamName.readOnly = !!res.shareId;
     $('teamName').value = res.teamName;
-    $('userName').value = res.userName;
-    $('peopleCount').value = res.peopleCount;
     $('purpose').value = res.purpose;
     el.repeatUntil.value = res.repeatUntil || DEFAULT_REPEAT_UNTIL;
     setResType(res.seriesId ? 'weekly' : 'once');
@@ -1101,7 +998,6 @@ function openEdit(res) {
     el.end.value = res.endTime;
     el.nextDayHint.classList.toggle('hidden', !res.isNextDay);
 
-    el.shareNote.classList.add('hidden');
     el.modalTitle.textContent = t('modal.editResTitle');
     el.submitBtn.textContent = t('modal.btnEdit');
     openOverlay(el.resModal);
@@ -1111,7 +1007,6 @@ function closeReservationModal() {
     closeOverlay(el.resModal);
     el.form.reset();
     editingId = null;
-    el.teamName.readOnly = false;
     el.nextDayHint.classList.add('hidden');
     Array.from(el.start.options).forEach(o => (o.disabled = false));
     Array.from(el.end.options).forEach(o => (o.disabled = false));
@@ -1147,8 +1042,6 @@ async function handleSubmit(event) {
         endTime,
         isNextDay,
         teamName: $('teamName').value.trim(),
-        userName: $('userName').value.trim(),
-        peopleCount: Number($('peopleCount').value),
         purpose: $('purpose').value
     };
 
@@ -1157,6 +1050,11 @@ async function handleSubmit(event) {
         // 수정하는 사이 다른 기기에서 지워진 경우
         closeReservationModal();
         return;
+    }
+    // 새 예약의 예약자는 카톡 닉네임(관리자는 '관리자')으로 자동 기록. 수정할 때는 원래 예약자 그대로
+    if (!editing) {
+        const booker = isAdmin() ? '관리자' : myProfile?.kakaoNick?.slice(0, 20);
+        if (booker) base.userName = booker;
     }
 
     const leftovers = editing?.seriesId && resType === 'once' ? seriesLeftovers(editing) : [];
@@ -1168,30 +1066,6 @@ async function handleSubmit(event) {
         const e = ts(dateStr, endTime, isNextDay);
         return !reservations.some(r => !ignoreIds.has(r.id) && s < endTs(r) && e > startTs(r));
     };
-
-    // ----- 새 예약의 팀: 목록에서 고른 팀 링크를 쓰거나, 새 팀이면 팀 링크를 만듭니다 -----
-    let teamId = null;
-    let share = null;
-    if (!editing) {
-        const norm = s => s.replace(/\s+/g, ' ').trim().toLowerCase();
-        teamId = selectedTeamId()
-            ?? [...access.teams].find(([, team]) => norm(team.name) === norm(base.teamName))?.[0]   // 이름을 쳤지만 이미 내 팀
-            ?? null;
-        if (teamId) {
-            base.teamName = access.teams.get(teamId).name;
-        } else if (store.mode === 'cloud' && !authUnavailable) {
-            // 같은 이름의 다른 사람 예약이 있으면 팀 링크를 먼저 열도록 안내합니다 (팀이 둘로 갈라지지 않게)
-            const dup = reservations.some(r => r.shareId && norm(r.teamName) === norm(base.teamName));
-            if (dup) {
-                const ok = await askConfirm(t('confirm.dupTeam', { team: base.teamName }), {
-                    title: t('confirm.dupTeamTitle'), yes: t('confirm.dupTeamYes'), no: t('modal.btnCancel'), primary: true
-                });
-                if (!ok) return;
-            }
-            share = { ...newShare(), teamName: base.teamName };
-            teamId = share.id;
-        }
-    }
 
     // ----- 저장할 내용 만들기 (store.write 한 번으로 저장) -----
     let ops;
@@ -1244,9 +1118,9 @@ async function handleSubmit(event) {
         if (editing) {
             // 이 예약을 첫 회차로 두고 나머지 회차를 같은 공유 링크로 묶어 추가합니다.
             const [first, ...rest] = payloads;
-            ops = { update: [[editing.id, first]], add: rest.map(p => ({ ...p, shareId: editing.shareId })) };
+            ops = { update: [[editing.id, first]], add: rest };
         } else {
-            ops = { share, add: payloads.map(p => ({ ...p, shareId: teamId ?? undefined })) };
+            ops = { add: payloads };
         }
     } else {
         if (!isFree(date)) {
@@ -1256,7 +1130,7 @@ async function handleSubmit(event) {
         }
 
         if (!editing) {
-            ops = { share, add: [{ ...base, date, shareId: teamId ?? undefined }] };
+            ops = { add: [{ ...base, date }] };
             doneMsg = t('msg.saved');
         } else if (editing.seriesId && resType === 'once') {
             // 고정 → 한 번: 이 회차만 남기고 아직 시작 안 한 회차는 취소합니다.
@@ -1289,15 +1163,10 @@ async function handleSubmit(event) {
         await store.write(ops);
         toast(doneMsg, 'success');
 
-        if (!editing) rememberInput(base, teamId);
-
         selectedDate = parseDate(date);
         viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
         closeReservationModal();
         renderAll();
-
-        // 새 팀이면 팀 톡방에 올릴 팀 링크를 바로 보여줍니다.
-        if (share) openShareModal(share.id, share.key, { title: t('share.titleTeam'), team: base.teamName, teamLink: true });
     } catch (err) {
         console.error(err);
         // 새 예약은 누구나 할 수 있으니, 거부되면 "링크를 받으라"가 아니라 설정 문제로 안내합니다.
@@ -1306,19 +1175,6 @@ async function handleSubmit(event) {
     } finally {
         el.submitBtn.disabled = false;
         el.submitBtn.textContent = originalLabel;
-    }
-}
-
-/** 다음 새 예약에 미리 채울 값을 기억하고, 예약자 이름이 바뀌었으면 관리자용 이름도 갱신합니다. */
-function rememberInput(base, teamId) {
-    const last = loadLast();
-    const next = {
-        teamId, teamName: base.teamName, userName: base.userName,
-        peopleCount: base.peopleCount, purpose: base.purpose
-    };
-    try { localStorage.setItem(LS_LAST, JSON.stringify(next)); } catch { /* 저장 못 해도 예약엔 지장 없음 */ }
-    if (store.mode === 'cloud' && last.userName !== base.userName) {
-        store.saveProfile({ name: base.userName }).catch(err => console.error('[store] 이름 저장 실패:', err));
     }
 }
 
@@ -1392,26 +1248,12 @@ function openSeriesDelete(res) {
     openOverlay(el.seriesModal);
 }
 
-/* ---------- 공유 링크 ----------
-   팀 링크: 팀 첫 예약 때 무작위 key 가 담긴 링크를 만들고, 팀원이 그 링크를 한 번 열면
-   그 기기에서 그 팀의 모든 예약(앞으로 할 예약 포함)을 수정·취소할 수 있습니다.
-   예전 예약별 링크(팀 이름 없는 링크)도 그대로 동작합니다.
-   ponytail: 링크가 새도 권한을 회수할 수 없음 — 필요해지면 key 재발급 + 규칙의 grant key 대조 추가 */
-
-function shareUrl(shareId, key) {
-    // 링크를 연 그 창에서 바로 권한만 받습니다. (다른 브라우저로 넘기지 않음)
-    // 카카오톡 메시지 링크에서 # 뒤가 빠질 수 있어 쿼리(?share=)로 보냅니다.
-    return `${location.origin}${location.pathname}?share=${shareId}.${key}`;
-}
-
-/* 카카오톡 공유 SDK — 공유 창을 열 때 미리 불러와 둡니다.
-   (버튼을 누른 뒤에 불러오면 브라우저가 팝업·앱 전환을 막을 수 있음) */
+/* 카카오 JavaScript SDK — 카톡 닉네임 연동(카카오 로그인)에 씁니다. */
 const KAKAO_SDK = {
     src: 'https://t1.kakaocdn.net/kakao_js_sdk/2.8.3/kakao.min.js',
     integrity: 'sha384-oroumrnFVE0xtgqyDZJARgERibXg2C28380uaUZz2kHDS5CR7tu20eGiOU6GkTpy'
 };
 let kakaoLoading = null;
-let kakaoReady = false;
 
 function loadKakao() {
     if (!KAKAO_JS_KEY) return Promise.resolve(false);
@@ -1435,153 +1277,10 @@ function loadKakao() {
     return kakaoLoading;
 }
 
-/** 휴대폰 기본 공유 창 (카카오 SDK 를 못 쓸 때 대안) */
-const canNativeShare = () => !!navigator.share && matchMedia('(pointer: coarse)').matches;
-
-let shareModalUrl = '';
-let shareModalTeam = '';
-let shareModalTeamLink = false;
-
-/** 공유 창 — 열자마자 링크를 자동 복사하고, [복사하기] 버튼도 둡니다. */
-function openShareModal(shareId, key, { title, team, teamLink = false }) {
-    shareModalUrl = shareUrl(shareId, key);
-    shareModalTeam = team;
-    shareModalTeamLink = teamLink;
-    el.shareTitle.textContent = title;
-    el.shareBody.textContent = t(teamLink ? 'share.bodyTeam' : 'share.body');
-    el.shareLink.value = shareModalUrl;
-    el.shareSendBtn.classList.toggle('hidden', !(kakaoReady || canNativeShare()));
-    loadKakao().then(ok => {
-        kakaoReady = ok;
-        el.shareSendBtn.classList.toggle('hidden', !(ok || canNativeShare()));
-    });
-    setShareCopied(false);
-    openOverlay(el.shareModal);
-    copyShareLink(true);
-}
-
-function setShareCopied(done) {
-    el.shareCopyBtn.innerHTML = done
-        ? `<i class="fa-solid fa-check"></i>${escapeHtml(t('share.copiedBtn'))}`
-        : `<i class="fa-regular fa-copy"></i>${escapeHtml(t('share.copy'))}`;
-}
-
-/** auto: 창을 열 때의 자동 복사 — 막혀 있으면 조용히 넘어가고 버튼으로 복사합니다. */
-async function copyShareLink(auto = false) {
-    const done = () => {
-        setShareCopied(true);
-        toast(t('share.copied'), 'success');
-    };
-    try {
-        await navigator.clipboard.writeText(shareModalUrl);
-        return done();
-    } catch { /* 앱 내 브라우저 등은 클립보드 API 가 막혀 있을 수 있음 */ }
-    if (auto) return;
-
-    // 예전 방식 복사 (카톡 내장 브라우저에서도 동작)
-    el.shareLink.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch { ok = false; }
-    if (ok) return done();
-    toast(t('share.copyFail'), 'error');   // 입력칸이 선택된 상태라 길게 눌러 복사하면 됩니다
-}
-
-/** [카카오톡으로 보내기] — 카톡 친구·채팅방 선택 화면을 바로 띄웁니다. */
-async function sendShareViaApp() {
-    if (kakaoReady) {
-        try {
-            window.Kakao.Share.sendDefault({
-                objectType: 'text',
-                text: t(shareModalTeamLink ? 'share.kakaoTextTeam' : 'share.kakaoText', { team: shareModalTeam }),
-                link: { mobileWebUrl: shareModalUrl, webUrl: shareModalUrl },
-                buttonTitle: t('share.kakaoButton')
-            });
-            return;
-        } catch (err) {
-            console.error('[kakao] 공유 실패:', err);   // 아래 기본 공유 창으로 대신
-        }
-    }
-    if (!navigator.share) return copyShareLink();
-    try {
-        await navigator.share({ title: t('share.text', { team: shareModalTeam }), url: shareModalUrl });
-    } catch (err) {
-        if (err?.name !== 'AbortError') copyShareLink();   // 공유 시트가 안 되면 복사로 대신
-    }
-}
-
-/** 예약 카드의 [공유] 버튼 */
-async function handleShare(res) {
-    try {
-        let shareId = res.shareId;
-        let key = shareId && shareKey(shareId);
-        if (!key) {
-            // 링크가 없던 기존 예약: 새 링크를 만들어 붙입니다. (고정 예약이면 내가 만든 회차 전부)
-            const share = newShare();
-            const targets = (res.seriesId ? reservations.filter(r => r.seriesId === res.seriesId) : [res])
-                .filter(r => !r.shareId && r.ownerUid === currentUser?.uid);
-            await store.write({ share, update: targets.map(r => [r.id, { shareId: share.id }]) });
-            ({ id: shareId, key } = share);
-        }
-        const teamLink = access.teams.has(shareId);
-        openShareModal(shareId, key, { title: t(teamLink ? 'share.titleTeam' : 'share.titleCard'), team: res.teamName, teamLink });
-    } catch (err) {
-        console.error(err);
-        toast(t(err?.code === 'permission-denied' ? 'err.permission' : 'err.save'), 'error');
-    }
-}
-
-let pendingGrant = null;   // 방금 링크로 권한 받은 shareId — 예약 목록이 오면 그 날짜로 이동
-let grantedNow = null;     // 이번 방문에 받은 shareId (카카오에 다녀온 뒤 배너를 다시 보여줄 때 씀)
-
-/**
- * 링크를 연 그 자리(카톡 내장 브라우저 포함)에서 화면 위 배너로 알립니다.
- * 해당 예약을 찾으면 팀명을 보여주고 그 날짜로 이동합니다.
- */
-function showGrantBanner() {
-    el.grantBanner.classList.remove('hidden');
-    const team = access.teams.get(pendingGrant)?.name;
-    const list = reservations.filter(r => r.shareId === pendingGrant).sort((a, b) => startTs(a) - startTs(b));
-    if (list.length === 0) {
-        el.grantText.textContent = team ? t('grant.doneTeamLink', { team }) : t('grant.done');
-        return;   // 예약 목록·팀 정보가 아직 안 왔으면 도착했을 때 다시 호출됩니다
-    }
-    const now = Date.now();
-    const target = list.find(r => endTs(r) > now) ?? list[0];
-    el.grantText.textContent = team ? t('grant.doneTeamLink', { team }) : t('grant.doneTeam', { team: target.teamName });
-    pendingGrant = null;
-    selectedDate = parseDate(target.date);
-    viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-    renderAll();
-}
-
-/** 주소에 ?share=... (예전 링크는 #share=...) 가 있으면 이 기기에 수정 권한을 등록합니다. */
-async function claimShareFromUrl() {
-    const raw = new URLSearchParams(location.search).get('share') ?? location.hash.match(/^#share=(.+)$/)?.[1];
-    const m = raw?.match(/^(sh_[A-Za-z0-9]{20})\.([A-Za-z0-9]{32})$/);
-    if (!m) return;
-    // 주소창의 key 는 등록이 끝나거나 링크가 틀렸을 때만 지웁니다.
-    // (네트워크 오류 등이면 남겨 두어 새로고침으로 다시 시도할 수 있게)
-    const clearHash = () => history.replaceState(null, '', location.pathname);
-    try {
-        await store.claimShare(m[1], m[2]);
-        clearHash();
-        pendingGrant = grantedNow = m[1];
-        showGrantBanner();
-    } catch (err) {
-        console.error(err);
-        if (err?.code === 'permission-denied') {
-            clearHash();
-            toast(t('share.claimFail'), 'error');
-        } else {
-            toast(t('err.save'), 'error');
-        }
-    }
-}
-
 /* ---------- 카톡 닉네임 ----------
-   페이지에 들어오면 카카오 로그인으로 닉네임을 받아 이 기기(uid)에 붙여 둡니다. 관리자가 누가 고쳤는지 보는 용도.
-   카톡 안에서는 동의 화면만, PC 등 일반 브라우저에서는 카카오 로그인 화면이 한 번 뜨고, 그 뒤로는 다시 묻지 않습니다.
-   권한과는 무관합니다.
+   처음 이 페이지를 열면(PC 포함) 카톡 닉네임 연동을 한 번 안내합니다. 연동하면 이 기기(uid)에 닉네임이 붙고,
+   베타 예약을 수정·취소할 수 있게 됩니다. 관리자가 누가 고쳤는지 보는 용도.
+   안내에서 [취소]하면 다시 묻지 않고, 하단 [카톡 닉네임 연결]로 언제든 연동할 수 있습니다.
    ponytail: 서버가 없어 닉네임은 기기가 스스로 저장하는 값(위조 가능) — 검증이 필요해지면 Firebase OIDC(카카오) 연결 */
 
 const kakaoRedirectUri = () => `${location.origin}${location.pathname}`;   // 콘솔에 등록한 주소와 같아야 함
@@ -1592,38 +1291,54 @@ function kakaoLinkable() {
 }
 
 function updateKakaoBtn() {
-    el.kakaoLinkBtn.classList.toggle('hidden', !kakaoLinkable() || localStorage.getItem(LS_KAKAO) === 'done');
+    el.kakaoLinkBtn.classList.toggle('hidden', !kakaoLinkable() || myProfile === undefined || kakaoLinked());
 }
 
-/** 카카오 동의 화면으로 이동 (돌아오면 handleKakaoReturn 이 이어받음) */
+/** 첫 방문 안내 — 기기마다 한 번만 (관리자·이미 연동한 기기는 묻지 않음) */
+async function askKakaoOnce() {
+    if (myProfile === undefined || !kakaoLinkable() || isAdmin() || kakaoLinked() || localStorage.getItem(LS_KAKAO_ASKED)) return;
+    localStorage.setItem(LS_KAKAO_ASKED, '1');
+    askKakao();
+}
+
+/** 카톡 연동 안내창 — [카카오톡 연동]이면 연동, [취소]면 하단 버튼 안내 (예약하려 할 때도 띄움) */
+async function askKakao() {
+    if (!kakaoLinkable()) {
+        toast(t('kakao.later'));
+        return;
+    }
+    const ok = await askConfirm(t('kakao.ask'), {
+        title: t('kakao.askTitle'), yes: t('kakao.askYes'), no: t('modal.btnCancel'), primary: true
+    });
+    if (ok) startKakaoLink();
+    else toast(t('kakao.later'));
+}
+
+/** 카카오 로그인으로 이동 (돌아오면 handleKakaoReturn 이 이어받음) */
 async function startKakaoLink() {
     await userReady;   // 돌아왔을 때 같은 익명 uid 여야 하므로 로그인이 끝난 뒤에 이동
-    if (!(await loadKakao())) return;
-    const state = newShare().key;   // 로그인 CSRF 방지용 무작위 값
+    if (!(await loadKakao())) {
+        toast(t('kakao.fail'), 'error');
+        return;
+    }
+    const state = randomToken();   // 로그인 CSRF 방지용 무작위 값
     localStorage.setItem(LS_KAKAO_STATE, state);
-    // 자동 시도는 한 번만 — 로그인 화면에서 그냥 돌아와도 다음부터는 하단 버튼으로만 연결
-    if (localStorage.getItem(LS_KAKAO) !== 'done') localStorage.setItem(LS_KAKAO, 'tried');
-    if (grantedNow) localStorage.setItem(LS_PENDING_GRANT, grantedNow);   // 돌아와서 권한 배너를 다시 보여줌
+    localStorage.setItem(LS_KAKAO_ASKED, '1');   // 버튼으로 연동해도 첫 방문 안내는 다시 띄우지 않음
     window.Kakao.Auth.authorize({ redirectUri: kakaoRedirectUri(), state });
 }
 
-/** 카카오에서 돌아왔으면(?code= / ?error=) 닉네임을 저장합니다. 돌아온 경우 true */
+/** 카카오에서 돌아왔으면(?code= / ?error=) 닉네임을 저장합니다. */
 async function handleKakaoReturn() {
     const q = new URLSearchParams(location.search);
-    if (!q.has('code') && !q.has('error')) return false;
+    if (!q.has('code') && !q.has('error')) return;
 
     const state = localStorage.getItem(LS_KAKAO_STATE);
     localStorage.removeItem(LS_KAKAO_STATE);
-    pendingGrant = localStorage.getItem(LS_PENDING_GRANT);
-    localStorage.removeItem(LS_PENDING_GRANT);
     history.replaceState(null, '', location.pathname);
-    if (pendingGrant) showGrantBanner();
-
-    if (!state || q.get('state') !== state) return true;   // 내가 시작하지 않은 로그인은 무시
+    if (!state || q.get('state') !== state) return;   // 내가 시작하지 않은 로그인은 무시
     if (q.has('error')) {
-        if (q.get('error') === 'access_denied') localStorage.setItem(LS_KAKAO, 'declined');   // 거절하면 다시 묻지 않음
-        updateKakaoBtn();
-        return true;
+        toast(t('kakao.later'));   // 동의 화면에서 취소
+        return;
     }
 
     try {
@@ -1655,14 +1370,11 @@ async function handleKakaoReturn() {
         if (!nick) throw new Error('no-nickname');
 
         await store.saveProfile({ kakaoNick: nick.slice(0, 40) });
-        localStorage.setItem(LS_KAKAO, 'done');
         toast(t('kakao.linked', { nick }), 'success');
     } catch (err) {
-        console.error('[kakao] 닉네임 연결 실패:', err);   // 일시적 오류일 수 있어 다음 방문 때 다시 시도
+        console.error('[kakao] 닉네임 연결 실패:', err);
         toast(t('kakao.fail'), 'error');
     }
-    updateKakaoBtn();
-    return true;
 }
 
 /* ---------- 관리자 ---------- */
@@ -1676,20 +1388,27 @@ function updateAdminUI() {
     el.adminLoginBtn.classList.toggle('hidden', !cloud || google);
     el.adminInfo.classList.toggle('hidden', !google);
     el.adminBadge.classList.toggle('hidden', !isAdmin());
-    el.logViewBtn.classList.toggle('hidden', !isAdmin());
     updateKakaoBtn();
 
-    // 관리자면 기기별 이름 목록을 받아 예약 카드에 누가 고쳤는지 표시
+    // 관리자면 기기별 이름과 수정·취소 기록을 받아 누가 무엇을 했는지 표시
     if (isAdmin() && !unwatchUsers) {
-        unwatchUsers = store.watchUsers(next => {
+        const unUsers = store.watchUsers(next => {
             users = next;
             renderDay();
+            renderLogs();
         });
+        const unLogs = store.watchLogs(next => {
+            logs = next;
+            renderLogs();
+        });
+        unwatchUsers = () => { unUsers(); unLogs(); };
     } else if (!isAdmin() && unwatchUsers) {
         unwatchUsers();
         unwatchUsers = null;
         users = new Map();
+        logs = [];
     }
+    renderLogs();
 
     if (!google) return;
 
@@ -1733,45 +1452,85 @@ async function handleAdminLogin() {
     }
 }
 
-/** 관리자: 수정·취소 기록 — 한 번에 저장된 기록(고정 예약 전체 취소 등)은 한 줄로 묶어 보여줍니다. */
-async function openLogs() {
-    el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('main.loading'))}</li>`;
-    openOverlay(el.logModal);
+/** 기록의 날짜 'YYYY-MM-DD' (기기 시간대 기준) */
+const logDate = l => (l.at?.toDate ? fmtDate(l.at.toDate()) : '');
 
-    let logs;
-    try {
-        logs = await store.readLogs();
-    } catch (err) {
-        console.error('[admin] 기록 읽기 실패:', err);
-        el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('log.fail'))}</li>`;
-        return;
-    }
+/** 규칙 테스트 기록을 뺀, 화면에 보일 기록 */
+const visibleLogs = () => logs.filter(l => typeof l.res?.date === 'string' && logDate(l) && !l.res.teamName.startsWith('[TEST]'));
 
-    const groups = [];
-    logs.filter(l => typeof l.res?.date === 'string').forEach(l => {
-        const last = groups.at(-1);
-        if (last && last[0].batch === l.batch && last[0].action === l.action) last.push(l);
-        else groups.push([l]);
-    });
-    if (groups.length === 0) {
+/** 기록이 있는 날짜들 (최신순) */
+const logDays = () => [...new Set(visibleLogs().map(logDate))];
+
+/** 기록이 있는 날짜 중 step 만큼 이동 (+1 이전 날, -1 다음 날) */
+function stepLogDay(step) {
+    const days = logDays();
+    const i = Math.max(0, days.indexOf(logDay ?? days[0]));
+    return days[Math.min(days.length - 1, Math.max(0, i + step))] ?? null;
+}
+
+/**
+ * 관리자에게만: 예약표 아래 '최근 수정·취소' 카드 — 하루씩 한 장, ◀ ▶ 로 넘김.
+ * 한 번에 저장된 기록은 한 줄로 — 고정 예약 전체 취소는 "[팀] 고정 예약 전체 취소 (N회)".
+ */
+function renderLogs() {
+    el.logCard.classList.toggle('hidden', !isAdmin());
+    if (!isAdmin()) return;
+
+    const days = logDays();
+    if (!days.includes(logDay)) logDay = days[0] ?? null;   // 처음엔 가장 최근 날짜
+    const i = days.indexOf(logDay);
+    el.logPrev.disabled = i < 0 || i >= days.length - 1;
+    el.logNext.disabled = i <= 0;
+    el.logDayLabel.textContent = logDay ? dayLabel(parseDate(logDay)) : '';
+
+    const groups = new Map();   // batch → 기록들 (최신순이라 먼저 나온 batch 가 최근)
+    visibleLogs().filter(l => logDate(l) === logDay)
+        .forEach(l => groups.set(l.batch, [...(groups.get(l.batch) ?? []), l]));
+    el.logClearBtn.classList.toggle('hidden', groups.size === 0);
+    if (groups.size === 0) {
         el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('log.empty'))}</li>`;
         return;
     }
 
-    el.logList.innerHTML = groups.map(group => {
-        const first = group.sort((a, b) => a.res.date.localeCompare(b.res.date))[0];
-        const at = first.at?.toDate?.();
-        const when = at ? `${at.getMonth() + 1}/${at.getDate()} ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
-        const r = first.res;
-        const what = `${r.teamName} · ${dayLabel(parseDate(r.date))} ${r.startTime}–${r.endTime}`
-            + (group.length > 1 ? ` ${t('log.more', { n: group.length - 1 })}` : '');
+    const slot = r => `${dayLabel(parseDate(r.date))} ${r.startTime}–${r.endTime}`;
+    el.logList.innerHTML = [...groups.values()].map(group => {
+        const deletes = group.filter(l => l.action === 'delete');
+        const updates = group.filter(l => l.action === 'update');
+        const team = (updates[0] ?? deletes[0]).res.teamName;
+        const what = updates.length && deletes.length ? t('log.toOnce', { team, slot: slot(updates[0].res), n: deletes.length })
+            : deletes.length > 1 ? t('log.seriesAll', { team, n: deletes.length })
+            : deletes.length ? t('log.one', { team, slot: slot(deletes[0].res) })
+            : t('log.edit', { team, slot: slot(updates[0].res) });
+        const action = deletes.length ? 'delete' : 'update';
+
+        const at = group[0].at.toDate();
+        const when = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
         return `
             <li class="log-item">
-                <span class="tag log-action${first.action === 'delete' ? ' is-delete' : ''}">${escapeHtml(t(`log.${first.action}`))}</span>
+                <span class="tag log-action${action === 'delete' ? ' is-delete' : ''}">${escapeHtml(t(`log.${action}`))}</span>
                 <span>${escapeHtml(what)}</span>
-                <span class="log-who"><i class="fa-solid fa-user-pen"></i> ${escapeHtml(userLabel(first.uid))} · ${escapeHtml(when)}</span>
+                <span class="log-who"><i class="fa-solid fa-user-pen"></i> ${escapeHtml(userLabel(group[0].uid))} · ${escapeHtml(when)}</span>
             </li>`;
     }).join('');
+}
+
+/** 관리자: 보고 있는 날짜의 기록만 삭제 (규칙 테스트 기록 포함, 다른 날짜는 그대로) */
+async function clearLogDay() {
+    const day = logDay;
+    const ids = logs.filter(l => logDate(l) === day).map(l => l.id);
+    if (!day || ids.length === 0) return;
+    const dayText = dayLabel(parseDate(day));
+    const ok = await askConfirm(t('log.clearConfirm', { day: dayText, n: ids.length }), {
+        title: t('log.clearTitle'), yes: t('log.clearYes'), no: t('modal.btnCancel')
+    });
+    if (!ok) return;
+    try {
+        await store.deleteLogs(ids);
+        toast(t('log.cleared', { day: dayText }), 'success');
+    } catch (err) {
+        console.error('[admin] 기록 삭제 실패:', err);
+        toast(t('log.clearFail'), 'error');
+    }
 }
 
 async function handleAdminLogout() {
@@ -1828,17 +1587,7 @@ function bindEvents() {
         viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
         renderAll();
     });
-    el.teamSelect.addEventListener('change', () => {
-        syncTeamInput();
-        if (!selectedTeamId()) {
-            el.teamName.value = '';
-            el.teamName.focus();
-        }
-    });
     el.kakaoLinkBtn.addEventListener('click', startKakaoLink);
-    el.logViewBtn.addEventListener('click', openLogs);
-    el.logCloseBtn.addEventListener('click', () => closeOverlay(el.logModal));
-    el.logModal.addEventListener('click', e => { if (e.target === el.logModal) closeOverlay(el.logModal); });
     el.closeModalBtn.addEventListener('click', closeReservationModal);
     el.cancelBtn.addEventListener('click', closeReservationModal);
     el.resModal.addEventListener('click', e => { if (e.target === el.resModal) closeReservationModal(); });
@@ -1883,19 +1632,14 @@ function bindEvents() {
         btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
     });
 
-    // 공유 창
-    el.shareCopyBtn.addEventListener('click', () => copyShareLink());
-    el.shareSendBtn.addEventListener('click', sendShareViaApp);
-    el.shareLink.addEventListener('focus', () => el.shareLink.select());
-    [el.shareCloseBtn, el.shareDoneBtn].forEach(b => b.addEventListener('click', () => closeOverlay(el.shareModal)));
-    el.shareModal.addEventListener('click', e => { if (e.target === el.shareModal) closeOverlay(el.shareModal); });
-    el.grantCloseBtn.addEventListener('click', () => el.grantBanner.classList.add('hidden'));
+    // 관리자: 기록 카드의 날짜 넘기기 (logDay 는 기록이 있는 날짜만 오갑니다)
+    el.logPrev.addEventListener('click', () => { logDay = stepLogDay(1); renderLogs(); });
+    el.logNext.addEventListener('click', () => { logDay = stepLogDay(-1); renderLogs(); });
+    el.logClearBtn.addEventListener('click', clearLogDay);
 
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (!el.logModal.classList.contains('hidden')) closeOverlay(el.logModal);
-        else if (!el.shareModal.classList.contains('hidden')) closeOverlay(el.shareModal);
-        else if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
+        if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
         else if (!el.resModal.classList.contains('hidden')) closeReservationModal();
         else if (!el.themeModal.classList.contains('hidden')) closeOverlay(el.themeModal);
     });
@@ -1914,7 +1658,6 @@ async function init() {
         if (err) toast(t('err.load'), 'error');
         reservations = list;
         renderAll();
-        if (pendingGrant) showGrantBanner();   // 링크로 받은 예약 날짜로 이동
         // 모달이 열려 있으면 선택 가능 시간도 갱신
         if (!el.resModal.classList.contains('hidden')) refreshTimeOptions();
     });
@@ -1931,18 +1674,14 @@ async function init() {
         renderMine();
     });
 
-    // 공유 권한(내가 만든 링크 / 받은 권한 / 팀)이 바뀌면 수정·공유 버튼을 다시 그립니다.
-    store.onAccess(next => {
-        access = next;
+    // 카카오에서 돌아온 경우를 먼저 처리한 뒤, 이 기기의 카톡 연동 여부로 수정 버튼·첫 방문 안내를 정합니다.
+    await handleKakaoReturn();
+    store.onProfile(profile => {
+        myProfile = profile;
         renderDay();
-        renderMine();
-        if (pendingGrant) showGrantBanner();   // 팀 이름이 도착하면 배너 문구 갱신
+        updateKakaoBtn();
+        askKakaoOnce();
     });
-
-    // 카카오에서 돌아온 경우를 먼저 처리하고, 링크 권한을 받은 뒤, 아직 연결 전이면 닉네임 연결을 시작합니다.
-    const backFromKakao = await handleKakaoReturn();
-    await claimShareFromUrl();
-    if (!backFromKakao && kakaoLinkable() && !localStorage.getItem(LS_KAKAO)) startKakaoLink();
 
     // 진행중 표시를 1분마다 갱신
     setInterval(() => {

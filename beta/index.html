@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=8">
+    <link rel="stylesheet" href="styles.css?v=10">
 </head>
 
 <body>
@@ -26,12 +26,6 @@
         <span>베타 테스트 버전입니다. 테스트용 예약표라 여기서 한 예약·수정·취소는 정식 예약표에 반영되지 않습니다.</span>
     </div>
 
-    <!-- 공유 링크로 권한을 받았을 때 (닫을 때까지 유지) -->
-    <div id="grantBanner" class="mode-banner grant-banner hidden" role="status">
-        <i class="fa-solid fa-circle-check"></i>
-        <span id="grantText"></span>
-        <button type="button" id="grantCloseBtn" class="banner-close" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
-    </div>
 
     <div class="app">
         <!-- ===== 헤더 ===== -->
@@ -119,6 +113,23 @@
                     <div id="reservationsList" class="reservations-list"></div>
                 </section>
             </div>
+
+            <!-- ===== 관리자에게만: 누가 언제 무엇을 수정·취소했는지 ===== -->
+            <section id="logCard" class="card log-card hidden">
+                <div class="card-head">
+                    <h2><i class="fa-solid fa-clock-rotate-left"></i><span data-i18n="log.title">최근 수정·취소</span></h2>
+                    <!-- 하루씩 한 장 — 기록이 있는 날짜만 오갑니다 -->
+                    <div class="month-nav">
+                        <button type="button" id="logPrev" class="icon-btn ghost" aria-label="이전 날"><i class="fa-solid fa-chevron-left"></i></button>
+                        <span id="logDayLabel" class="log-day"></span>
+                        <button type="button" id="logNext" class="icon-btn ghost" aria-label="다음 날"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                <ul id="logList" class="log-list"></ul>
+                <button type="button" id="logClearBtn" class="link-btn log-clear hidden">
+                    <i class="fa-regular fa-trash-can"></i><span data-i18n="log.clear">이 날 기록 삭제</span>
+                </button>
+            </section>
         </main>
 
         <footer class="app-footer">
@@ -140,11 +151,7 @@
                         <code id="adminUid"></code>
                         <button type="button" id="copyUidBtn" class="chip-btn" data-i18n="admin.copy">UID 복사</button>
                     </div>
-                    <button type="button" id="adminLogoutBtn" class="link-btn" data-i18n="admin.logout">로그아웃</button>
-                    <button type="button" id="logViewBtn" class="link-btn hidden">
-                        <i class="fa-solid fa-clock-rotate-left"></i><span data-i18n="admin.logs">로그 보기</span>
-                    </button>
-                </div>
+                    <button type="button" id="adminLogoutBtn" class="link-btn" data-i18n="admin.logout">로그아웃</button>                </div>
             </div>
         </footer>
     </div>
@@ -204,20 +211,7 @@
                 <div class="field-row">
                     <div class="field">
                         <label for="teamName" data-i18n="modal.labelTeam">팀명</label>
-                        <!-- 링크를 받은 팀이 있으면 목록에서 고르고, 없으면 새 팀 이름을 입력 -->
-                        <select id="teamSelect" class="hidden" aria-label="팀 선택"></select>
-                        <input type="text" id="teamName" data-i18n-placeholder="modal.phTeam" placeholder="예: 밴드팀" maxlength="30" required>
-                    </div>
-                    <div class="field">
-                        <label for="userName" data-i18n="modal.labelName">예약자 이름</label>
-                        <input type="text" id="userName" data-i18n-placeholder="modal.phName" placeholder="홍길동" maxlength="20" required>
-                    </div>
-                </div>
-
-                <div class="field-row">
-                    <div class="field">
-                        <label for="peopleCount" data-i18n="modal.labelCount">사용 인원수</label>
-                        <input type="number" id="peopleCount" min="1" max="50" data-i18n-placeholder="modal.phCount" placeholder="예: 5" required>
+                        <input type="text" id="teamName" data-i18n-placeholder="modal.phTeam" placeholder="예: 밴드팀" maxlength="30" autocomplete="off" required>
                     </div>
                     <div class="field">
                         <label for="purpose" data-i18n="modal.labelPurpose">사용 목적</label>
@@ -229,10 +223,6 @@
                         </select>
                     </div>
                 </div>
-
-                <p id="shareNote" class="field-note hidden">
-                    <i class="fa-solid fa-share-nodes"></i> <span data-i18n="modal.shareNote">새 팀이면 팀 톡방에 올릴 팀 링크가 만들어집니다.</span>
-                </p>
 
                 <div class="modal-actions">
                     <button type="button" id="cancelBtn" class="secondary-btn" data-i18n="modal.btnCancel">취소</button>
@@ -288,27 +278,6 @@
         </div>
     </div>
 
-    <!-- ===== 공유 링크 ===== -->
-    <div id="shareModal" class="overlay hidden">
-        <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
-            <div class="modal-head">
-                <h2 id="shareTitle" data-i18n="share.title">예약 완료</h2>
-                <button id="shareCloseBtn" class="icon-btn ghost" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="modal-body">
-                <p id="shareBody" class="confirm-text">이 링크를 팀 카톡방에 보내면, 링크를 연 기기에서도 이 예약을 수정·취소할 수 있습니다.</p>
-                <div class="share-row">
-                    <input type="text" id="shareLink" readonly aria-label="공유 링크">
-                    <button type="button" id="shareCopyBtn" class="primary-btn"></button>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" id="shareSendBtn" class="secondary-btn hidden" data-i18n="share.send">카카오톡으로 보내기</button>
-                    <button type="button" id="shareDoneBtn" class="secondary-btn" data-i18n="series.keep">닫기</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- ===== 고정 예약 취소 범위 선택 ===== -->
     <div id="seriesModal" class="overlay hidden">
         <div class="modal modal-sm" role="dialog" aria-modal="true">
@@ -341,22 +310,9 @@
         </div>
     </div>
 
-    <!-- ===== 관리자: 수정·취소 기록 ===== -->
-    <div id="logModal" class="overlay hidden">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="logTitle">
-            <div class="modal-head">
-                <h2 id="logTitle" data-i18n="log.title">수정·취소 기록</h2>
-                <button id="logCloseBtn" class="icon-btn ghost" aria-label="닫기"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div class="modal-body">
-                <ul id="logList" class="log-list"></ul>
-            </div>
-        </div>
-    </div>
-
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=14"></script>
+    <script type="module" src="app.js?v=16"></script>
 </body>
 
 </html>

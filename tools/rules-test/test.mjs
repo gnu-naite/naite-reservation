@@ -1,4 +1,6 @@
-// 실제 Firebase(테스트 컬렉션 naite_reservations_beta)에 대한 보안 규칙 시나리오 테스트
+// 실제 Firebase 에 대한 보안 규칙 시나리오 테스트
+//  - 1~15: 정식과 같은 규칙을 쓰는 테스트 컬렉션 naite_reservations_test
+//  - 16:   베타 컬렉션 naite_reservations_beta (카톡 연동한 기기면 누구나 수정·삭제)
 // 실행: cd tools/rules-test && npm install && npm test
 // 익명 사용자 A, B, C = 서로 다른 기기. 끝나면 테스트 문서를 지웁니다.
 import { initializeApp } from 'firebase/app';
@@ -10,8 +12,9 @@ import {
 
 import { FIREBASE_CONFIG as CONFIG } from '../../config.js';
 
-// 규칙 블록이 정식·베타 공용이라, 실제 예약을 건드리지 않도록 테스트 컬렉션에서 검증합니다.
-const COL = 'naite_reservations_beta';
+// 실제 예약을 건드리지 않도록 정식과 같은 규칙의 테스트 컬렉션에서 검증합니다.
+const COL = 'naite_reservations_test';
+const BETA = 'naite_reservations_beta';
 const TAG = '[TEST]';
 
 const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -74,7 +77,7 @@ console.log('uid A/B/C:', A.uid, B.uid, C.uid);
 const leftover = { shares: [], grants: [], logs: 0 };   // 규칙상 앱에서 지울 수 없는 문서 (보고용)
 
 // 1 비로그인
-await expect('1a 비로그인 베타 읽기', true, () => getDocs(anon.col));
+await expect('1a 비로그인 테스트 컬렉션 읽기', true, () => getDocs(anon.col));
 await expect('1b 비로그인 예약 생성', false, () => setDoc(doc(anon.col), { ...res('2030-01-01'), ownerUid: 'x', createdAt: 'x' }));
 await expect('1c 비로그인 정식 읽기', true, () => getDocs(collection(anon.db, 'naite_reservations')));
 
@@ -308,6 +311,61 @@ await expect('15g A: 기록 남기기', true, async () => {
 await expect('15h A: 내 기록 고치기', false, () => updateDoc(logRef, { action: 'delete' }));
 await expect('15i A: 내 기록 지우기', false, () => deleteDoc(logRef));
 
+// 16 베타: 관리자 또는 카톡 연동한 기기만 예약·수정·삭제 (작성자·공유 링크 무관, 예약자 이름·인원수 없이)
+// A 는 14a 에서 카톡 닉네임을 저장했고, C 는 아직 없음. B 는 이름만 저장
+const betaDoc = (d, date, extra = {}) => ({
+    date, startTime: '10:00', endTime: '11:00', isNextDay: false, teamName: `${TAG} 베타팀`, purpose: '합주',
+    userName: '카톡닉', ownerUid: d.uid, editedBy: d.uid, createdAt: 'x', ...extra
+});
+let betaId;
+await expect('16a C(미연동): 베타 예약 생성', false, () => setDoc(doc(collection(C.db, BETA)), betaDoc(C, '2030-07-01')));
+await expect('16b A(연동): 이름·인원수 없이 베타 예약 생성', true, async () => {
+    const ref = doc(collection(A.db, BETA));
+    const { userName, ...noName } = betaDoc(A, '2030-07-01');
+    await setDoc(ref, noName);
+    betaId = ref.id;
+});
+await expect('16c A(연동): 인원 0명 베타 예약', false, () => setDoc(doc(collection(A.db, BETA)), betaDoc(A, '2030-07-02', { peopleCount: 0 })));
+await expect('16d 정식 규칙은 그대로: 이름 없이 테스트 컬렉션 예약', false, async () => {
+    const { userName, ...noName } = res('2030-07-03');
+    await setDoc(doc(A.col), { ...noName, ownerUid: A.uid, createdAt: 'x' });
+});
+await expect('16e B(이름만): 베타 예약 수정', false, async () => {
+    await setDoc(doc(B.db, 'naite_users', B.uid), { name: '이름만', updatedAt: 'x' }, { merge: true });
+    await updateDoc(doc(B.db, BETA, betaId), { teamName: `${TAG} 이름만`, editedBy: B.uid });
+});
+await expect('16f C(미연동): 베타 예약 삭제', false, () => deleteDoc(doc(C.db, BETA, betaId)));
+await expect('16g C: 카톡 닉네임 연동', true, () => setDoc(doc(C.db, 'naite_users', C.uid), { kakaoNick: '연동닉', updatedAt: 'x' }, { merge: true }));
+await expect('16h C(연동 후): 남의(A) 베타 예약 수정 + 기록', true, async () => {
+    const b = writeBatch(C.db);
+    b.update(doc(C.db, BETA, betaId), { teamName: `${TAG} 연동후`, editedBy: C.uid });
+    b.set(doc(collection(C.db, 'naite_logs')), logDoc(C, { action: 'update', col: BETA }));
+    await b.commit();
+    leftover.logs++;
+});
+await expect('16i C(연동): 60회 고정 예약 생성 → A(연동)가 기록과 함께 일괄 삭제', true, async () => {
+    const ids = [];
+    const mk = writeBatch(C.db);
+    for (let i = 0; i < 60; i++) {
+        const ref = doc(collection(C.db, BETA));
+        mk.set(ref, betaDoc(C, new Date(Date.UTC(2032, 0, 1 + i * 7)).toISOString().slice(0, 10), { seriesId: 's-beta' }));
+        ids.push(ref.id);
+    }
+    await mk.commit();
+    const b = writeBatch(A.db);
+    ids.forEach(id => {
+        b.delete(doc(A.db, BETA, id));
+        b.set(doc(collection(A.db, 'naite_logs')), logDoc(A, { col: BETA }));
+    });
+    await b.commit();
+    leftover.logs += 60;
+});
+await expect('16j C(연동): 남의(A) 베타 예약 삭제', true, () => deleteDoc(doc(C.db, BETA, betaId)));
+await expect('16k 정식 규칙은 그대로: 연동한 A 가 B 의 테스트 컬렉션 예약 수정', false, async () => {
+    const id = await createPlain(B, '2030-07-08');
+    await updateDoc(doc(A.db, COL, id), { userName: '연동해도안됨', editedBy: A.uid });
+});
+
 // 정리: 남은 테스트 문서 삭제 (작성자 기기로)
 let cleaned = 0;
 for (const d of [A, B, C]) {
@@ -315,6 +373,10 @@ for (const d of [A, B, C]) {
     for (const s of snap.docs) {
         if (String(s.data().teamName).startsWith(TAG)) { await deleteDoc(s.ref); cleaned++; }
     }
+}
+// 베타에 남은 테스트 예약 (연동한 A 가 삭제)
+for (const s of (await getDocs(collection(A.db, BETA))).docs) {
+    if (String(s.data().teamName).startsWith(TAG)) { await deleteDoc(s.ref); cleaned++; }
 }
 
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.label}  (기대 ${r.expected} / 실제 ${r.got})`);
