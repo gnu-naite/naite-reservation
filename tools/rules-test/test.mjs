@@ -5,7 +5,7 @@ import { initializeApp } from 'firebase/app';
 import { initializeAuth, inMemoryPersistence, signInAnonymously } from 'firebase/auth';
 import {
     getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
-    writeBatch, deleteField, query, where
+    writeBatch, deleteField, query, where, serverTimestamp
 } from 'firebase/firestore';
 
 import { FIREBASE_CONFIG as CONFIG } from '../../config.js';
@@ -71,7 +71,7 @@ const B = await device('B');
 const C = await device('C');
 if (new Set([A.uid, B.uid, C.uid]).size !== 3) throw new Error('기기 uid 가 겹칩니다');
 console.log('uid A/B/C:', A.uid, B.uid, C.uid);
-const leftover = { shares: [], grants: [] };   // 규칙상 앱에서 지울 수 없는 문서 (보고용)
+const leftover = { shares: [], grants: [], logs: 0 };   // 규칙상 앱에서 지울 수 없는 문서 (보고용)
 
 // 1 비로그인
 await expect('1a 비로그인 베타 읽기', true, () => getDocs(anon.col));
@@ -280,6 +280,34 @@ await expect('14f B: 이름 목록 전체 읽기', false, () => getDocs(collecti
 await expect('14g A: 허용 안 된 필드', false, () => setDoc(doc(A.db, 'naite_users', A.uid), { admin: true, updatedAt: 'x' }, { merge: true }));
 await expect('14h A: 닉네임 41자', false, () => setDoc(doc(A.db, 'naite_users', A.uid), { kakaoNick: 'x'.repeat(41), updatedAt: 'x' }, { merge: true }));
 
+// 15 수정·취소 기록: 본인 uid·서버 시각으로만, 관리자만 읽기, 예약 취소와 한 배치
+const logDoc = (d, extra = {}) => ({
+    action: 'delete', uid: d.uid, col: COL, batch: 'b1', at: serverTimestamp(),
+    res: { date: '2030-06-01', startTime: '10:00', endTime: '11:00', teamName: `${TAG} 팀`, userName: '테스터' }, ...extra
+});
+await expect('15a A: 예약 취소 + 기록 한 배치', true, async () => {
+    const id = await createPlain(A, '2030-06-01');
+    const b = writeBatch(A.db);
+    b.delete(doc(A.db, COL, id));
+    b.set(doc(collection(A.db, 'naite_logs')), logDoc(A));
+    await b.commit();
+    leftover.logs++;
+});
+await expect('15b A: 남의 uid 로 기록', false, () => setDoc(doc(collection(A.db, 'naite_logs')), logDoc(A, { uid: B.uid })));
+await expect('15c A: 서버 시각 아닌 기록', false, () => setDoc(doc(collection(A.db, 'naite_logs')), logDoc(A, { at: 'x' })));
+await expect('15d A: 허용 안 된 action', false, () => setDoc(doc(collection(A.db, 'naite_logs')), logDoc(A, { action: 'wipe' })));
+await expect('15e A: res 에 추가 필드', false, () => setDoc(doc(collection(A.db, 'naite_logs')), logDoc(A, { res: { date: 'x', admin: true } })));
+await expect('15j A: res 빈 기록', false, () => setDoc(doc(collection(A.db, 'naite_logs')), logDoc(A, { res: {} })));
+await expect('15f A: 기록 읽기(관리자 아님)', false, () => getDocs(collection(A.db, 'naite_logs')));
+let logRef;
+await expect('15g A: 기록 남기기', true, async () => {
+    logRef = doc(collection(A.db, 'naite_logs'));
+    await setDoc(logRef, logDoc(A, { action: 'update' }));
+    leftover.logs++;
+});
+await expect('15h A: 내 기록 고치기', false, () => updateDoc(logRef, { action: 'delete' }));
+await expect('15i A: 내 기록 지우기', false, () => deleteDoc(logRef));
+
 // 정리: 남은 테스트 문서 삭제 (작성자 기기로)
 let cleaned = 0;
 for (const d of [A, B, C]) {
@@ -292,5 +320,5 @@ for (const d of [A, B, C]) {
 for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.label}  (기대 ${r.expected} / 실제 ${r.got})`);
 const fail = results.filter(r => !r.ok).length;
 console.log(`\n총 ${results.length}건, 실패 ${fail}건, 정리한 테스트 예약 ${cleaned}건`);
-console.log(`남은 공유 문서 ${leftover.shares.length}건(naite_shares), 권한 문서 ${leftover.grants.length}건(naite_access) — 규칙상 앱에서 삭제 불가`);
+console.log(`남은 공유 문서 ${leftover.shares.length}건(naite_shares), 권한 문서 ${leftover.grants.length}건(naite_access), 기록 ${leftover.logs}건(naite_logs) — 규칙상 앱에서 삭제 불가`);
 process.exit(fail ? 1 : 0);

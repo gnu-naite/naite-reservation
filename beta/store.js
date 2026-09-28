@@ -21,6 +21,9 @@ const SHARES = 'naite_shares';
 const ACCESS = 'naite_access';
 // 기기(uid)별 표시 이름 { kakaoNick, name } — 관리자만 전체를 봅니다.
 const USERS = 'naite_users';
+// 예약 수정·취소 기록 { action, uid, col, batch, at, res } — 관리자만 읽습니다.
+const LOGS = 'naite_logs';
+const LOG_FIELDS = ['date', 'startTime', 'endTime', 'teamName', 'userName'];
 
 const emptyAccess = () => ({ shares: new Map(), grants: new Map(), teams: new Map() });
 
@@ -155,11 +158,13 @@ async function createCloudStore(onChange) {
     };
 
     // 실시간 구독: 다른 사람이 예약을 바꾸면 즉시 반영됩니다.
+    let current = new Map();   // id → 예약 (변경 기록에 취소·수정 전 내용을 남길 때 씀)
     fs.onSnapshot(
         fs.query(col),
         snapshot => {
             const list = [];
             snapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+            current = new Map(list.map(r => [r.id, r]));
             onChange(list);
         },
         err => {
@@ -222,13 +227,24 @@ async function createCloudStore(onChange) {
          *   add     [data]         새 예약 (작성자 uid 자동 기록)
          *   update  [[id, data]]   값이 undefined 인 필드는 삭제
          *   remove  [id]
-         * 추가·수정한 예약에는 마지막으로 손댄 기기(editedBy)를 남깁니다. 삭제는 기록되지 않습니다.
+         * 추가·수정한 예약에는 마지막으로 손댄 기기(editedBy)를 남기고,
+         * 수정·취소는 같은 배치로 변경 기록(naite_logs)에 남깁니다. (관리자 [로그 보기])
          */
         async write({ share, add = [], update = [], remove = [] }) {
             const uid = await getUid();
             const createdAt = new Date().toISOString();
             const batch = fs.writeBatch(db);
             const by = uid ? { editedBy: uid } : {};
+
+            // ponytail: 기록은 앱이 남기는 것이라 규칙으로 강제하진 않음 (개발자 도구로 우회 가능).
+            // 삭제 규칙에서 기록을 확인하면 배치당 문서 조회 한도(20회)에 걸려 60회 고정 예약 일괄 취소가 막힘 — 강제하려면 서버(Cloud Functions) 필요
+            const batchId = fs.doc(fs.collection(db, LOGS)).id;
+            const log = (action, r) => r && uid && batch.set(fs.doc(fs.collection(db, LOGS)), {
+                action, uid, col: COLLECTION_NAME, batch: batchId, at: fs.serverTimestamp(),
+                res: Object.fromEntries(LOG_FIELDS.map(k => [k, r[k] ?? ''])),
+            });
+            update.forEach(([id, data]) => log('update', current.get(id) && { ...current.get(id), ...data }));
+            remove.forEach(id => log('delete', current.get(id)));
 
             if (share) {
                 batch.set(fs.doc(db, SHARES, share.id), withoutUndefined({ ownerUid: uid, key: share.key, teamName: share.teamName, createdAt }));
@@ -259,6 +275,15 @@ async function createCloudStore(onChange) {
             const uid = await getUid();
             if (!uid) return;
             await fs.setDoc(fs.doc(db, USERS, uid), { ...fields, updatedAt: new Date().toISOString() }, { merge: true });
+        },
+
+        /** 관리자용: 이 예약표의 최근 수정·취소 기록 (최신순) */
+        async readLogs(max = 300) {
+            // 이 예약표 것만 받아 정렬 (col + at 정렬을 함께 쓰면 복합 색인이 필요해서 정렬은 여기서)
+            const snap = await fs.getDocs(fs.query(fs.collection(db, LOGS), fs.where('col', '==', COLLECTION_NAME)));
+            return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (b.at?.toMillis?.() ?? 0) - (a.at?.toMillis?.() ?? 0))
+                .slice(0, max);
         },
 
         /** 관리자용: 기기별 표시 이름 목록 구독. cb(Map uid → { kakaoNick, name }), 해제 함수 반환 */
@@ -322,6 +347,9 @@ function createLocalStore(onChange) {
             throw new Error('local-mode');
         },
         async saveProfile() {},
+        async readLogs() {
+            return [];
+        },
         watchUsers() {
             return () => {};
         }

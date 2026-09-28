@@ -2,7 +2,7 @@
    나이테 동아리방 예약 — 메인 로직
    ============================================================ */
 
-import { createStore, newShare } from './store.js?v=2';
+import { createStore, newShare } from './store.js?v=3';
 import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
 
 /* ---------- i18n 사전 ---------- */
@@ -115,6 +115,13 @@ const I18N = {
         "kakao.connect": "카톡 닉네임 연결",
         "kakao.linked": "카톡 닉네임 '{nick}'(으)로 연결했습니다.",
         "kakao.fail": "카톡 닉네임 연결에 실패했습니다.",
+        "admin.logs": "로그 보기",
+        "log.title": "수정·취소 기록",
+        "log.empty": "아직 기록이 없습니다.",
+        "log.fail": "기록을 불러오지 못했습니다.",
+        "log.delete": "취소",
+        "log.update": "수정",
+        "log.more": "외 {n}건",
         "confirm.toOnceTitle": "한 번 예약으로 변경",
         "confirm.toOnce": "이 회차만 남기고, 아직 남은 고정 예약 {count}회를 취소할까요? 되돌릴 수 없습니다.",
         "confirm.toOnceYes": "변경하기",
@@ -266,6 +273,13 @@ const I18N = {
         "kakao.connect": "Link KakaoTalk nickname",
         "kakao.linked": "Linked KakaoTalk nickname '{nick}'.",
         "kakao.fail": "Couldn't link your KakaoTalk nickname.",
+        "admin.logs": "View log",
+        "log.title": "Edit & cancel log",
+        "log.empty": "No records yet.",
+        "log.fail": "Couldn't load the log.",
+        "log.delete": "Cancelled",
+        "log.update": "Edited",
+        "log.more": "+{n} more",
         "confirm.toOnceTitle": "Change to one-off",
         "confirm.toOnce": "Keep only this occurrence and cancel the {count} remaining weekly bookings? This cannot be undone.",
         "confirm.toOnceYes": "Change",
@@ -314,7 +328,7 @@ const I18N = {
 const LS_LANG = 'naite_lang';
 const LS_THEME = 'naite_theme';
 const LS_LAST = 'naite_last';            // 마지막 예약 입력값 (다음 새 예약에 미리 채움)
-const LS_KAKAO = 'naite_kakao';          // 카톡 닉네임 연결: 'done' | 'declined'
+const LS_KAKAO = 'naite_kakao';          // 카톡 닉네임 연결: 'tried'(자동 시도함) | 'done' | 'declined'
 const LS_KAKAO_STATE = 'naite_kakao_state';
 const LS_PENDING_GRANT = 'naite_pending_grant';
 const NEW_TEAM = '__new';
@@ -393,6 +407,10 @@ const el = {
     teamSelect: $('teamSelect'),
     teamName: $('teamName'),
     kakaoLinkBtn: $('kakaoLinkBtn'),
+    logViewBtn: $('logViewBtn'),
+    logModal: $('logModal'),
+    logList: $('logList'),
+    logCloseBtn: $('logCloseBtn'),
 
     resModal: $('reservationModal'),
     modalTitle: $('modalTitle'),
@@ -1561,15 +1579,16 @@ async function claimShareFromUrl() {
 }
 
 /* ---------- 카톡 닉네임 ----------
-   카톡 안에서 열면 카카오 로그인으로 닉네임을 받아 이 기기(uid)에 붙여 둡니다. 관리자가 누가 고쳤는지 보는 용도.
-   처음 한 번만 카카오 동의 화면이 뜨고, 그 뒤로는 다시 묻지 않습니다. 권한과는 무관합니다.
+   페이지에 들어오면 카카오 로그인으로 닉네임을 받아 이 기기(uid)에 붙여 둡니다. 관리자가 누가 고쳤는지 보는 용도.
+   카톡 안에서는 동의 화면만, PC 등 일반 브라우저에서는 카카오 로그인 화면이 한 번 뜨고, 그 뒤로는 다시 묻지 않습니다.
+   권한과는 무관합니다.
    ponytail: 서버가 없어 닉네임은 기기가 스스로 저장하는 값(위조 가능) — 검증이 필요해지면 Firebase OIDC(카카오) 연결 */
 
-const isKakaoInApp = () => /KAKAOTALK/i.test(navigator.userAgent);
 const kakaoRedirectUri = () => `${location.origin}${location.pathname}`;   // 콘솔에 등록한 주소와 같아야 함
 
+/** 배포 주소(https)에서만 — 로컬 개발 주소는 카카오 콘솔에 등록돼 있지 않습니다. */
 function kakaoLinkable() {
-    return isKakaoInApp() && !!KAKAO_JS_KEY && store?.mode === 'cloud' && !authUnavailable;
+    return location.protocol === 'https:' && !!KAKAO_JS_KEY && store?.mode === 'cloud' && !authUnavailable;
 }
 
 function updateKakaoBtn() {
@@ -1582,6 +1601,8 @@ async function startKakaoLink() {
     if (!(await loadKakao())) return;
     const state = newShare().key;   // 로그인 CSRF 방지용 무작위 값
     localStorage.setItem(LS_KAKAO_STATE, state);
+    // 자동 시도는 한 번만 — 로그인 화면에서 그냥 돌아와도 다음부터는 하단 버튼으로만 연결
+    if (localStorage.getItem(LS_KAKAO) !== 'done') localStorage.setItem(LS_KAKAO, 'tried');
     if (grantedNow) localStorage.setItem(LS_PENDING_GRANT, grantedNow);   // 돌아와서 권한 배너를 다시 보여줌
     window.Kakao.Auth.authorize({ redirectUri: kakaoRedirectUri(), state });
 }
@@ -1655,6 +1676,7 @@ function updateAdminUI() {
     el.adminLoginBtn.classList.toggle('hidden', !cloud || google);
     el.adminInfo.classList.toggle('hidden', !google);
     el.adminBadge.classList.toggle('hidden', !isAdmin());
+    el.logViewBtn.classList.toggle('hidden', !isAdmin());
     updateKakaoBtn();
 
     // 관리자면 기기별 이름 목록을 받아 예약 카드에 누가 고쳤는지 표시
@@ -1709,6 +1731,47 @@ async function handleAdminLogin() {
         }[code];
         toast(key ? t(key) : t('admin.loginFail', { code }), 'error');
     }
+}
+
+/** 관리자: 수정·취소 기록 — 한 번에 저장된 기록(고정 예약 전체 취소 등)은 한 줄로 묶어 보여줍니다. */
+async function openLogs() {
+    el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('main.loading'))}</li>`;
+    openOverlay(el.logModal);
+
+    let logs;
+    try {
+        logs = await store.readLogs();
+    } catch (err) {
+        console.error('[admin] 기록 읽기 실패:', err);
+        el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('log.fail'))}</li>`;
+        return;
+    }
+
+    const groups = [];
+    logs.filter(l => typeof l.res?.date === 'string').forEach(l => {
+        const last = groups.at(-1);
+        if (last && last[0].batch === l.batch && last[0].action === l.action) last.push(l);
+        else groups.push([l]);
+    });
+    if (groups.length === 0) {
+        el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('log.empty'))}</li>`;
+        return;
+    }
+
+    el.logList.innerHTML = groups.map(group => {
+        const first = group.sort((a, b) => a.res.date.localeCompare(b.res.date))[0];
+        const at = first.at?.toDate?.();
+        const when = at ? `${at.getMonth() + 1}/${at.getDate()} ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}` : '';
+        const r = first.res;
+        const what = `${r.teamName} · ${dayLabel(parseDate(r.date))} ${r.startTime}–${r.endTime}`
+            + (group.length > 1 ? ` ${t('log.more', { n: group.length - 1 })}` : '');
+        return `
+            <li class="log-item">
+                <span class="tag log-action${first.action === 'delete' ? ' is-delete' : ''}">${escapeHtml(t(`log.${first.action}`))}</span>
+                <span>${escapeHtml(what)}</span>
+                <span class="log-who"><i class="fa-solid fa-user-pen"></i> ${escapeHtml(userLabel(first.uid))} · ${escapeHtml(when)}</span>
+            </li>`;
+    }).join('');
 }
 
 async function handleAdminLogout() {
@@ -1773,6 +1836,9 @@ function bindEvents() {
         }
     });
     el.kakaoLinkBtn.addEventListener('click', startKakaoLink);
+    el.logViewBtn.addEventListener('click', openLogs);
+    el.logCloseBtn.addEventListener('click', () => closeOverlay(el.logModal));
+    el.logModal.addEventListener('click', e => { if (e.target === el.logModal) closeOverlay(el.logModal); });
     el.closeModalBtn.addEventListener('click', closeReservationModal);
     el.cancelBtn.addEventListener('click', closeReservationModal);
     el.resModal.addEventListener('click', e => { if (e.target === el.resModal) closeReservationModal(); });
@@ -1827,7 +1893,8 @@ function bindEvents() {
 
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (!el.shareModal.classList.contains('hidden')) closeOverlay(el.shareModal);
+        if (!el.logModal.classList.contains('hidden')) closeOverlay(el.logModal);
+        else if (!el.shareModal.classList.contains('hidden')) closeOverlay(el.shareModal);
         else if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
         else if (!el.resModal.classList.contains('hidden')) closeReservationModal();
         else if (!el.themeModal.classList.contains('hidden')) closeOverlay(el.themeModal);
@@ -1872,7 +1939,7 @@ async function init() {
         if (pendingGrant) showGrantBanner();   // 팀 이름이 도착하면 배너 문구 갱신
     });
 
-    // 카카오에서 돌아온 경우를 먼저 처리하고, 링크 권한을 받은 뒤, 카톡 안이면 닉네임 연결을 시작합니다.
+    // 카카오에서 돌아온 경우를 먼저 처리하고, 링크 권한을 받은 뒤, 아직 연결 전이면 닉네임 연결을 시작합니다.
     const backFromKakao = await handleKakaoReturn();
     await claimShareFromUrl();
     if (!backFromKakao && kakaoLinkable() && !localStorage.getItem(LS_KAKAO)) startKakaoLink();
