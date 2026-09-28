@@ -102,6 +102,10 @@ const I18N = {
         "kakao.linked": "카톡 닉네임 '{nick}'(으)로 연결했습니다.",
         "kakao.fail": "카톡 닉네임 연결에 실패했습니다.",
         "kakao.askTitle": "카카오톡 닉네임 연동",
+        "kakao.unlink": "카톡 연동 해제",
+        "kakao.unlinkConfirm": "이 기기의 카톡 닉네임 연동을 해제할까요? 해제하면 다시 연동할 때까지 예약·수정·취소가 막힙니다.",
+        "kakao.unlinkYes": "해제",
+        "kakao.unlinked": "카톡 연동을 해제했습니다.",
         "kakao.ask": "예약하거나 수정·취소하려면 카카오톡 닉네임 연동이 필요합니다. (처음 한 번만)\n\n예약자 이름 대신 닉네임이 기록되고, 누가 수정·취소했는지 관리자가 확인하는 용도로만 쓰입니다. 지금 연동할까요?",
         "kakao.askYes": "카카오톡 연동",
         "kakao.later": "나중에 하단의 [카톡 닉네임 연결]을 눌러 연동할 수 있습니다. 연동 전에는 예약·수정·취소가 막혀 있습니다.",
@@ -246,6 +250,10 @@ const I18N = {
         "kakao.linked": "Linked KakaoTalk nickname '{nick}'.",
         "kakao.fail": "Couldn't link your KakaoTalk nickname.",
         "kakao.askTitle": "Link KakaoTalk",
+        "kakao.unlink": "Unlink KakaoTalk",
+        "kakao.unlinkConfirm": "Unlink this device's KakaoTalk nickname? You won't be able to book, edit or cancel until you link again.",
+        "kakao.unlinkYes": "Unlink",
+        "kakao.unlinked": "KakaoTalk unlinked.",
         "kakao.ask": "To book, edit or cancel, link your KakaoTalk nickname (one time only).\n\nYour nickname is recorded instead of a name, and admins use it to see who edited or cancelled. Link now?",
         "kakao.askYes": "Link KakaoTalk",
         "kakao.later": "You can link later with [Link KakaoTalk nickname] at the bottom. Until then you can't book, edit or cancel.",
@@ -316,7 +324,7 @@ let authUnavailable = false;      // 인증을 쓸 수 없는 상태 (콘솔에�
 let myProfile;                    // 이 기기의 { kakaoNick, name } (undefined: 아직 모름, null: 없음)
 let users = new Map();            // 관리자용: uid → { kakaoNick, name }
 let logs = [];                    // 관리자용: 수정·취소 기록 (최신순)
-let logDay = null;                // 관리자용: 기록 카드에서 보고 있는 날짜 'YYYY-MM-DD' (null 이면 가장 최근)
+let logDay = fmtDate(new Date()); // 관리자용: 기록 카드에서 보고 있는 날짜 'YYYY-MM-DD' (처음엔 오늘)
 let unwatchUsers = null;
 let resolveUserReady;
 const userReady = new Promise(r => (resolveUserReady = r));   // 익명 로그인까지 끝났을 때
@@ -365,9 +373,10 @@ const el = {
     mineChip: $('mineChip'),
     dayReserveBtn: $('dayReserveBtn'),
     kakaoLinkBtn: $('kakaoLinkBtn'),
+    kakaoUnlinkBtn: $('kakaoUnlinkBtn'),
     logCard: $('logCard'),
     logList: $('logList'),
-    logDayLabel: $('logDayLabel'),
+    logDate: $('logDate'),
     logPrev: $('logPrev'),
     logNext: $('logNext'),
     logClearBtn: $('logClearBtn'),
@@ -725,9 +734,12 @@ function renderOccupancy(dateKey, now) {
 function renderToday() {
     renderMine();
     const now = Date.now();
-    const todayKey = fmtDate(new Date());
+    const todayDate = new Date();
+    const todayKey = fmtDate(todayDate);
+    const prevKey = fmtDate(new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() - 1));
+    // 어제 밤에 시작해 자정을 넘긴 예약도 오늘 일정에 포함
     const today = reservations
-        .filter(r => r.date === todayKey)
+        .filter(r => r.date === todayKey || (r.date === prevKey && r.isNextDay))
         .sort((a, b) => startTs(a) - startTs(b));
 
     if (today.length === 0) {
@@ -736,10 +748,17 @@ function renderToday() {
     }
 
     el.upcoming.innerHTML = '';
-    today.forEach(r => {
+    today.forEach((r, i) => {
         const ongoing = startTs(r) <= now && endTs(r) > now;
         const done = endTs(r) <= now;
-        // 한 줄짜리 행 — 휴대폰에서도 첫 화면을 다 차지하지 않게
+        // 일정 사이를 작은 화살표로 이어 순서가 한눈에 보이게
+        if (i > 0) {
+            const arrow = document.createElement('span');
+            arrow.className = 'tr-arrow';
+            arrow.setAttribute('aria-hidden', 'true');
+            arrow.innerHTML = '<i class="fa-solid fa-arrow-right"></i>';
+            el.upcoming.appendChild(arrow);
+        }
         const row = document.createElement('button');
         row.type = 'button';
         row.className = `today-row${ongoing ? ' is-ongoing' : ''}${done ? ' is-done' : ''}`;
@@ -748,7 +767,7 @@ function renderToday() {
             <span class="tr-team">${escapeHtml(r.teamName)}</span>
             ${ongoing ? `<span class="status-pill">${escapeHtml(t('status.ongoing'))}</span>` : ''}`;
 
-        // 누르면 오늘 날짜로 이동 (다른 달을 보고 있었다면 돌아옵니다)
+        // 누르면 그 날짜로 이동 (다른 달을 보고 있었다면 돌아옵니다)
         row.addEventListener('click', () => {
             selectedDate = parseDate(r.date);
             viewMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
@@ -1292,6 +1311,23 @@ function kakaoLinkable() {
 
 function updateKakaoBtn() {
     el.kakaoLinkBtn.classList.toggle('hidden', !kakaoLinkable() || myProfile === undefined || kakaoLinked());
+    el.kakaoUnlinkBtn.classList.toggle('hidden', !kakaoLinked());
+}
+
+/** 이 기기의 카톡 연동 해제 — 닉네임을 지우고, 첫 방문 안내도 다시 뜨게 합니다. */
+async function unlinkKakao() {
+    const ok = await askConfirm(t('kakao.unlinkConfirm'), {
+        title: t('kakao.unlink'), yes: t('kakao.unlinkYes'), no: t('modal.btnCancel')
+    });
+    if (!ok) return;
+    try {
+        await store.saveProfile({ kakaoNick: '' });
+        localStorage.removeItem(LS_KAKAO_ASKED);
+        toast(t('kakao.unlinked'), 'success');
+    } catch (err) {
+        console.error('[kakao] 연동 해제 실패:', err);
+        toast(t('err.save'), 'error');
+    }
 }
 
 /** 첫 방문 안내 — 기기마다 한 번만 (관리자·이미 연동한 기기는 묻지 않음) */
@@ -1458,35 +1494,30 @@ const logDate = l => (l.at?.toDate ? fmtDate(l.at.toDate()) : '');
 /** 규칙 테스트 기록을 뺀, 화면에 보일 기록 */
 const visibleLogs = () => logs.filter(l => typeof l.res?.date === 'string' && logDate(l) && !l.res.teamName.startsWith('[TEST]'));
 
-/** 기록이 있는 날짜들 (최신순) */
-const logDays = () => [...new Set(visibleLogs().map(logDate))];
-
-/** 기록이 있는 날짜 중 step 만큼 이동 (+1 이전 날, -1 다음 날) */
-function stepLogDay(step) {
-    const days = logDays();
-    const i = Math.max(0, days.indexOf(logDay ?? days[0]));
-    return days[Math.min(days.length - 1, Math.max(0, i + step))] ?? null;
+/** 보고 있는 날짜에서 하루 앞뒤로 */
+function stepLogDay(days) {
+    const d = parseDate(logDay);
+    d.setDate(d.getDate() + days);
+    return fmtDate(d);
 }
 
 /**
- * 관리자에게만: 예약표 아래 '최근 수정·취소' 카드 — 하루씩 한 장, ◀ ▶ 로 넘김.
+ * 관리자에게만: 예약표 아래 '최근 수정·취소' 카드 — 하루씩 한 장, 날짜 선택이나 ◀ ▶ 로 넘김.
  * 한 번에 저장된 기록은 한 줄로 — 고정 예약 전체 취소는 "[팀] 고정 예약 전체 취소 (N회)".
  */
 function renderLogs() {
     el.logCard.classList.toggle('hidden', !isAdmin());
     if (!isAdmin()) return;
 
-    const days = logDays();
-    if (!days.includes(logDay)) logDay = days[0] ?? null;   // 처음엔 가장 최근 날짜
-    const i = days.indexOf(logDay);
-    el.logPrev.disabled = i < 0 || i >= days.length - 1;
-    el.logNext.disabled = i <= 0;
-    el.logDayLabel.textContent = logDay ? dayLabel(parseDate(logDay)) : '';
+    const today = fmtDate(new Date());
+    el.logDate.value = logDay;
+    el.logDate.max = today;
+    el.logNext.disabled = logDay >= today;   // 앞으로의 날짜엔 기록이 없음
 
     const groups = new Map();   // batch → 기록들 (최신순이라 먼저 나온 batch 가 최근)
     visibleLogs().filter(l => logDate(l) === logDay)
         .forEach(l => groups.set(l.batch, [...(groups.get(l.batch) ?? []), l]));
-    el.logClearBtn.classList.toggle('hidden', groups.size === 0);
+    el.logClearBtn.disabled = !logs.some(l => logDate(l) === logDay);   // 규칙 테스트 기록만 있어도 지울 수 있게
     if (groups.size === 0) {
         el.logList.innerHTML = `<li class="placeholder">${escapeHtml(t('log.empty'))}</li>`;
         return;
@@ -1588,6 +1619,7 @@ function bindEvents() {
         renderAll();
     });
     el.kakaoLinkBtn.addEventListener('click', startKakaoLink);
+    el.kakaoUnlinkBtn.addEventListener('click', unlinkKakao);
     el.closeModalBtn.addEventListener('click', closeReservationModal);
     el.cancelBtn.addEventListener('click', closeReservationModal);
     el.resModal.addEventListener('click', e => { if (e.target === el.resModal) closeReservationModal(); });
@@ -1632,9 +1664,13 @@ function bindEvents() {
         btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
     });
 
-    // 관리자: 기록 카드의 날짜 넘기기 (logDay 는 기록이 있는 날짜만 오갑니다)
-    el.logPrev.addEventListener('click', () => { logDay = stepLogDay(1); renderLogs(); });
-    el.logNext.addEventListener('click', () => { logDay = stepLogDay(-1); renderLogs(); });
+    // 관리자: 기록 카드의 날짜 — 달력에서 고르거나 하루씩 앞뒤로
+    el.logPrev.addEventListener('click', () => { logDay = stepLogDay(-1); renderLogs(); });
+    el.logNext.addEventListener('click', () => { logDay = stepLogDay(1); renderLogs(); });
+    el.logDate.addEventListener('change', () => {
+        if (el.logDate.value) logDay = el.logDate.value;
+        renderLogs();
+    });
     el.logClearBtn.addEventListener('click', clearLogDay);
 
     document.addEventListener('keydown', e => {

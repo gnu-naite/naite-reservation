@@ -5,23 +5,15 @@ rules_version = '2';
 // Firebase 콘솔 > Firestore Database > [규칙] 탭에 그대로 붙여넣고 [게시]
 //
 // - 보기: 누구나
-// - 예약 생성: 로그인(익명 포함)한 사용자. 작성자 uid 가 함께 저장됩니다.
-//              베타는 관리자 또는 카톡 닉네임을 연동한 기기만 (예약자 이름·인원수 없이 가능)
-// - 수정/삭제: 정식은 작성자 본인, 관리자, 또는 공유 링크를 연 기기
-//              베타는 관리자, 또는 카톡 닉네임을 연동한 기기(naite_users 의 kakaoNick) 누구나
+// - 정식: 예약은 로그인(익명 포함)한 사용자, 수정·삭제는 작성자 본인 또는 관리자
+// - 베타: 예약·수정·삭제 모두 관리자 또는 카톡 닉네임을 연동한 기기(naite_users 의 kakaoNick) 누구나
+//         예약자 이름·인원수 없이 예약 가능 (예약자는 카톡 닉네임으로 자동 기록)
 // - 예약의 editedBy: 마지막으로 추가·수정한 기기 uid (본인 uid 만 기록 가능)
-//
-// 공유 링크
-//   naite_shares/{shareId}               { ownerUid, key }  만든 사람만 읽기
-//   naite_access/{uid}/grants/{shareId}  { key }            링크의 key 가 맞아야 생성
-//   예약 문서의 shareId 가 같은 예약들(고정 예약 전 회차)이 한 링크로 묶입니다.
-//   팀 링크: share 에 teamName 이 있으면 그 팀의 모든 예약이 한 링크로 묶이고,
-//            예약의 teamName 은 share 의 teamName 과 같아야 합니다. (다른 팀 행세 방지)
 //
 // 기기별 표시 이름
 //   naite_users/{uid}  { kakaoNick, name, updatedAt }  본인만 쓰기, 본인·관리자만 읽기
 //
-// 변경 기록 (관리자 [로그 보기])
+// 변경 기록 (관리자 '최근 수정·취소')
 //   naite_logs/{id}    { action, uid, col, batch, at, res }  본인 uid·서버 시각으로만 생성, 관리자만 읽기·삭제
 // ============================================================
 service cloud.firestore {
@@ -37,20 +29,8 @@ service cloud.firestore {
       return ['naite_reservations', 'naite_reservations_beta', 'naite_reservations_test'];
     }
 
-    // 베타: 관리자 또는 카톡 닉네임을 연동한 기기면 누구나 수정·삭제 (공유 링크·작성자 구분 없음)
     function isBeta(col) {
       return col == 'naite_reservations_beta';
-    }
-
-    function kakaoLinked() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/naite_users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/naite_users/$(request.auth.uid)).data.get('kakaoNick', '') != '';
-    }
-
-    function canModify(col) {
-      return (isBeta(col) && (isAdmin() || kakaoLinked()))
-        || (!isBeta(col) && (isOwner() || isAdmin() || canUseShare()));
     }
 
     function signedIn() {
@@ -66,37 +46,17 @@ service cloud.firestore {
       return signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
     }
 
-    function validShareId(sid) {
-      return sid is string && sid.matches('^sh_[A-Za-z0-9]{20}$');
+    // 카톡 닉네임을 연동한 기기 (닉네임은 기기가 스스로 저장하는 값 — 서버 검증 없음)
+    function kakaoLinked() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/naite_users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/naite_users/$(request.auth.uid)).data.get('kakaoNick', '') != '';
     }
 
-    function sharePath(sid) {
-      return /databases/$(database)/documents/naite_shares/$(sid);
-    }
-
-    // 이 공유 링크를 만든 사람 (같은 배치에서 막 만드는 중이어도 인정)
-    function ownsShare(sid) {
-      return signedIn() && validShareId(sid)
-        && getAfter(sharePath(sid)).data.ownerUid == request.auth.uid;
-    }
-
-    // 링크를 열어 수정 권한을 받은 기기
-    function hasGrant(sid) {
-      return signedIn() && validShareId(sid)
-        && exists(/databases/$(database)/documents/naite_access/$(request.auth.uid)/grants/$(sid));
-    }
-
-    // 현재 예약이 속한 공유 링크의 권한이 있는지
-    function canUseShare() {
-      return 'shareId' in resource.data
-        && (hasGrant(resource.data.shareId) || ownsShare(resource.data.shareId));
-    }
-
-    // 팀 링크 예약이면 팀명이 팀 링크의 팀명과 같아야 함 (예약별 링크·링크 없는 예약은 해당 없음)
-    function teamNameMatches(d) {
-      return !('shareId' in d)
-        || getAfter(sharePath(d.shareId)).data.get('teamName', null) == null
-        || getAfter(sharePath(d.shareId)).data.teamName == d.teamName;
+    // 수정·삭제 권한 — 베타: 관리자·카톡 연동 / 정식: 작성자·관리자
+    function canModify(col) {
+      return (isBeta(col) && (isAdmin() || kakaoLinked()))
+        || (!isBeta(col) && (isOwner() || isAdmin()));
     }
 
     // editedBy 는 생략하거나(정식 화면) 본인 uid 만 기록할 수 있음
@@ -109,7 +69,7 @@ service cloud.firestore {
         || request.resource.data.get('editedBy', '') == request.auth.uid;
     }
 
-    // 공통 형식 — 예약자 이름·인원수는 있으면 검사 (베타는 둘 다 없어도 됨: 예약자는 카톡 닉네임으로 자동 기록)
+    // 공통 형식 — 예약자 이름·인원수는 있으면 검사 (베타는 둘 다 없어도 됨)
     function isValidCore(d) {
       return d.keys().hasAll(['date', 'startTime', 'endTime', 'teamName', 'purpose'])
         && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
@@ -130,57 +90,29 @@ service cloud.firestore {
       return (isBeta(col) && isValidCore(d)) || (!isBeta(col) && isValidReservation(d));
     }
 
-    // shareId 는 한 번 붙으면 바꿀 수 없습니다.
-    // 예외: 링크가 없던 기존 예약에 작성자가 자기 링크를 새로 붙이는 경우
-    function shareIdUnchangedOrAttached() {
-      return request.resource.data.get('shareId', '') == resource.data.get('shareId', '')
-        || (!('shareId' in resource.data) && isOwner() && ownsShare(request.resource.data.shareId));
-    }
-
     match /{col}/{docId} {
       allow read: if col in reservationCollections();
 
       // 생성: 로그인 필수 + 작성자 uid 는 반드시 본인 (베타는 관리자이거나 카톡 연동한 기기만)
-      //       shareId 를 붙이려면 그 링크를 만들었거나 권한을 받은 기기여야 함
+      //       예전 공유 링크 기능의 shareId 는 새로 붙일 수 없음
       allow create: if col in reservationCollections()
         && signedIn()
         && (!isBeta(col) || isAdmin() || kakaoLinked())
         && isValidFor(col, request.resource.data)
         && request.resource.data.ownerUid == request.auth.uid
-        && (!('shareId' in request.resource.data)
-            || ownsShare(request.resource.data.shareId)
-            || hasGrant(request.resource.data.shareId))
-        && (isBeta(col) || teamNameMatches(request.resource.data))
+        && !('shareId' in request.resource.data)
         && editedByOnCreate();
 
-      // 수정: 정식은 작성자·관리자·공유 권한, 베타는 관리자·카톡 연동. 작성자 정보는 바꿀 수 없음
+      // 수정: 작성자 정보와 (예전 예약에 남아 있는) shareId 는 바꿀 수 없음
       allow update: if col in reservationCollections()
         && canModify(col)
         && isValidFor(col, request.resource.data)
         && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
-        && shareIdUnchangedOrAttached()
-        && (isBeta(col) || teamNameMatches(request.resource.data))   // 베타는 팀 링크를 더 쓰지 않음
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['shareId'])
         && editedByOnUpdate();
 
-      // 삭제: 정식은 작성자·관리자·공유 권한, 베타는 관리자·카톡 연동
       allow delete: if col in reservationCollections()
         && canModify(col);
-    }
-
-    // 공유 링크 — 만든 사람과 링크를 연 기기만 읽을 수 있고(팀 이름 확인용), 한 번 만들면 바꿀 수 없음
-    match /naite_shares/{sid} {
-      allow read: if signedIn()
-        && (resource.data.ownerUid == request.auth.uid
-            || exists(/databases/$(database)/documents/naite_access/$(request.auth.uid)/grants/$(sid)));
-      allow create: if signedIn() && validShareId(sid)
-        && request.resource.data.keys().hasOnly(['ownerUid', 'key', 'createdAt', 'teamName'])
-        && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.key is string
-        && request.resource.data.key.matches('^[A-Za-z0-9]{32}$')
-        && (!('teamName' in request.resource.data)
-            || (request.resource.data.teamName is string
-                && request.resource.data.teamName.size() > 0
-                && request.resource.data.teamName.size() <= 30));
     }
 
     // 기기별 표시 이름 — 본인만 쓰고, 본인과 관리자만 읽음 (닉네임은 기기가 스스로 적는 값)
@@ -214,16 +146,7 @@ service cloud.firestore {
         && request.resource.data.res.userName is string && request.resource.data.res.userName.size() <= 20;
     }
 
-    // 링크를 연 기기의 수정 권한 — 자기 uid 아래에만, key 가 맞을 때만
-    match /naite_access/{uid}/grants/{sid} {
-      allow read: if signedIn() && request.auth.uid == uid;
-      allow create, update: if signedIn() && request.auth.uid == uid
-        && validShareId(sid)
-        && request.resource.data.keys().hasOnly(['key', 'createdAt'])
-        && request.resource.data.key == get(sharePath(sid)).data.key;
-    }
-
-    // 나머지 경로는 전부 차단
+    // 나머지 경로는 전부 차단 (예전 공유 링크 naite_shares / naite_access 포함)
     match /{document=**} {
       allow read, write: if false;
     }

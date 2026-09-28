@@ -199,56 +199,6 @@ button {
     border-bottom-color: #4a3a14;
 }
 
-/* 공유 링크로 권한을 받았을 때 */
-.mode-banner.grant-banner {
-    background: var(--ongoing-soft);
-    color: var(--ongoing);
-    border-bottom-color: var(--border);
-    font-weight: 600;
-}
-
-.banner-close {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-    border-radius: 50%;
-    color: inherit;
-}
-
-.banner-close:hover {
-    background: color-mix(in srgb, currentColor 12%, transparent);
-}
-
-/* 공유 창: 링크 + 복사 버튼 */
-.share-row {
-    display: flex;
-    gap: 8px;
-}
-
-.share-row input {
-    flex: 1;
-    min-width: 0;
-    height: 42px;
-    padding: 0 12px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    font-size: .82rem;
-    color: var(--text-soft);
-}
-
-.share-row input:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.share-row .primary-btn {
-    height: 42px;
-    flex-shrink: 0;
-}
-
 /* 베타 안내 — 강조색 계열로 주황 경고 배너와 구분 */
 .mode-banner.beta-banner {
     background: var(--accent-soft);
@@ -467,21 +417,22 @@ button {
 }
 
 /* ---------- 오늘 일정 ----------
-   한 줄짜리 행 목록. 카드를 겹겹이 쌓지 않고 구분선만 둡니다. */
+   한 줄짜리 일정을 시간순으로 늘어놓고 작은 화살표로 잇습니다. */
 .upcoming-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    column-gap: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 4px;
 }
 
 .today-row {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    width: 100%;
-    min-height: 44px;
-    padding: 0 4px;
-    border-bottom: 1px solid var(--border);
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     text-align: left;
     transition: background .12s;
 }
@@ -499,13 +450,22 @@ button {
 }
 
 .tr-team {
-    flex: 1;
     min-width: 0;
+    max-width: 14em;
     font-size: .92rem;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.tr-arrow {
+    font-size: .7rem;
+    color: var(--text-muted);
+}
+
+.today-row.is-ongoing {
+    border-color: var(--ongoing);
 }
 
 .today-row.is-ongoing .tr-time {
@@ -1350,10 +1310,6 @@ button {
         border-radius: var(--radius);
     }
 
-    .upcoming-list {
-        grid-template-columns: 1fr;
-    }
-
     .month-nav h2 {
         min-width: 104px;
         font-size: .95rem;
@@ -1436,12 +1392,21 @@ button {
     font-size: .76rem;
 }
 
-/* 기록 카드 날짜 */
-.log-day {
-    min-width: 7em;
-    text-align: center;
+/* 기록 카드 날짜 — 달력 + 하루씩 넘기기 */
+.log-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.log-date {
+    height: 32px;
+    padding: 0 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
     font-size: .82rem;
-    font-weight: 600;
 }
 
 .icon-btn:disabled {
@@ -1450,6 +1415,10 @@ button {
 }
 
 .log-clear {
-    margin-top: 10px;
-    color: var(--danger);
+    margin-top: 12px;
+}
+
+.log-clear:disabled {
+    opacity: .4;
+    cursor: default;
 }

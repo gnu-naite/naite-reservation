@@ -5,7 +5,7 @@ export * from '../config.js';
 export const COLLECTION_NAME = "naite_reservations_beta";
 
 /**
- * 카카오톡 공유용 JavaScript 키 (카카오디벨로퍼스 > naite res > 플랫폼 키).
+ * 카카오 로그인(카톡 닉네임 연동)용 JavaScript 키 (카카오디벨로퍼스 > naite res > 플랫폼 키).
  * 브라우저에 공개되는 값이며, 콘솔에 등록한 도메인에서만 동작합니다.
  * 정식 전환 때 루트 config.js 로 옮기세요.
  */
