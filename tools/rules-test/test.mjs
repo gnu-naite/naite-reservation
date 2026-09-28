@@ -223,6 +223,63 @@ await expect('11f C: 전 회차 일괄 삭제', true, async () => {
     await b.commit();
 });
 
+// 12 팀 링크: share 에 teamName, 그 팀의 모든 예약이 한 링크로
+const TEAM = `${TAG} 팀링크`;
+const team = { ...newShare(), teamName: TEAM };
+let teamRes;
+await expect('12a A: 팀 링크 + 첫 예약 한 배치', true, async () => {
+    const b = writeBatch(A.db);
+    b.set(doc(A.db, 'naite_shares', team.id), { ownerUid: A.uid, key: team.key, teamName: TEAM, createdAt: 'x' });
+    teamRes = doc(A.col);
+    b.set(teamRes, { ...res('2030-04-01', { teamName: TEAM }), shareId: team.id, ownerUid: A.uid, editedBy: A.uid, createdAt: 'x' });
+    await b.commit();
+    created.push([A, teamRes.id]);
+    leftover.shares.push(team.id);
+});
+await expect('12b A: 팀 링크에 다른 팀명으로 예약', false, () =>
+    setDoc(doc(A.col), { ...res('2030-04-02', { teamName: `${TAG} 딴팀` }), shareId: team.id, ownerUid: A.uid, createdAt: 'x' }));
+await expect('12c A: 팀명 31자 팀 링크', false, () =>
+    setDoc(doc(A.db, 'naite_shares', `sh_${rid(20)}`), { ownerUid: A.uid, key: rid(32), teamName: 'x'.repeat(31), createdAt: 'x' }));
+await expect('12d A: 팀명 빈 문자열 팀 링크', false, () =>
+    setDoc(doc(A.db, 'naite_shares', `sh_${rid(20)}`), { ownerUid: A.uid, key: rid(32), teamName: '', createdAt: 'x' }));
+await expect('12e B: 링크 받기 전 팀 share 읽기', false, () => getDoc(doc(B.db, 'naite_shares', team.id)));
+await expect('12f B: 팀 링크 받기', true, async () => {
+    await grant(B, team.id, team.key);
+    leftover.grants.push(`${B.uid}/${team.id}`);
+});
+await expect('12g B: 받은 팀 share 읽기(팀 이름 확인)', true, async () => {
+    const s = await getDoc(doc(B.db, 'naite_shares', team.id));
+    if (s.data()?.teamName !== TEAM) throw new Error('팀명 불일치');
+});
+let teamRes2;
+await expect('12h B: 같은 팀으로 새 예약', true, async () => {
+    teamRes2 = doc(B.col);
+    await setDoc(teamRes2, { ...res('2030-04-08', { teamName: TEAM }), shareId: team.id, ownerUid: B.uid, editedBy: B.uid, createdAt: 'x' });
+    created.push([B, teamRes2.id]);
+});
+await expect('12i B: A 가 만든 팀 예약 수정', true, () => updateDoc(doc(B.db, COL, teamRes.id), { userName: '팀원', editedBy: B.uid }));
+await expect('12j A: B 가 만든 팀 예약 수정', true, () => updateDoc(doc(A.db, COL, teamRes2.id), { userName: '팀장', editedBy: A.uid }));
+await expect('12k B: 팀 예약의 팀명 바꾸기', false, () => updateDoc(doc(B.db, COL, teamRes.id), { teamName: `${TAG} 딴팀`, editedBy: B.uid }));
+await expect('12l C: 팀 링크 없이 팀 예약 수정', false, () => updateDoc(doc(C.db, COL, teamRes.id), { userName: '해커', editedBy: C.uid }));
+await expect('12m C: 팀 링크 없이 팀으로 예약', false, () =>
+    setDoc(doc(C.col), { ...res('2030-04-15', { teamName: TEAM }), shareId: team.id, ownerUid: C.uid, createdAt: 'x' }));
+
+// 13 editedBy: 본인 uid 만 기록, 정식 화면(기록 안 함)은 그대로 통과
+await expect('13a A: editedBy 에 남의 uid 로 생성', false, () =>
+    setDoc(doc(A.col), { ...res('2030-05-01'), ownerUid: A.uid, editedBy: B.uid, createdAt: 'x' }));
+await expect('13b B: 수정하며 editedBy 를 남의 uid 로', false, () => updateDoc(doc(B.db, COL, teamRes.id), { userName: '위장', editedBy: C.uid }));
+await expect('13c A: editedBy 안 건드리는 수정(정식 방식)', true, () => updateDoc(doc(A.db, COL, teamRes.id), { userName: '정식수정' }));
+
+// 14 기기별 표시 이름
+await expect('14a A: 내 이름 저장', true, () => setDoc(doc(A.db, 'naite_users', A.uid), { kakaoNick: '테스트닉', updatedAt: 'x' }, { merge: true }));
+await expect('14b A: 내 이름 추가 저장(merge)', true, () => setDoc(doc(A.db, 'naite_users', A.uid), { name: '테스터', updatedAt: 'x' }, { merge: true }));
+await expect('14c A: 내 이름 읽기', true, () => getDoc(doc(A.db, 'naite_users', A.uid)));
+await expect('14d B: A 이름 읽기', false, () => getDoc(doc(B.db, 'naite_users', A.uid)));
+await expect('14e B: A 이름 덮어쓰기', false, () => setDoc(doc(B.db, 'naite_users', A.uid), { kakaoNick: '해커', updatedAt: 'x' }));
+await expect('14f B: 이름 목록 전체 읽기', false, () => getDocs(collection(B.db, 'naite_users')));
+await expect('14g A: 허용 안 된 필드', false, () => setDoc(doc(A.db, 'naite_users', A.uid), { admin: true, updatedAt: 'x' }, { merge: true }));
+await expect('14h A: 닉네임 41자', false, () => setDoc(doc(A.db, 'naite_users', A.uid), { kakaoNick: 'x'.repeat(41), updatedAt: 'x' }, { merge: true }));
+
 // 정리: 남은 테스트 문서 삭제 (작성자 기기로)
 let cleaned = 0;
 for (const d of [A, B, C]) {

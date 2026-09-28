@@ -1380,3 +1380,24 @@ button {
         flex: 1;
     }
 }
+
+/* ---------- 팀 선택 · 날짜 상세 버튼 ---------- */
+.head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chip-btn i {
+    font-size: .72rem;
+}
+
+/* 팀 목록 아래 새 팀 이름 칸 */
+.field select + input {
+    margin-top: 8px;
+}
+
+.field input[readonly] {
+    background: var(--surface-2);
+    color: var(--text-soft);
+}
