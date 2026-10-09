@@ -1433,3 +1433,13 @@ button {
     opacity: .4;
     cursor: default;
 }
+.chat-card { padding: 20px; }
+.chat-card p { margin: 12px 0; line-height: 1.6; }
+.chat-settings, .chat-review { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.chat-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.chat-preview img { display: block; max-width: 100%; max-height: 600px; margin: 12px auto; }
+.chat-events { list-style: none; padding: 0; max-height: 420px; overflow-y: auto; }
+.chat-events li { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+.chat-events .chat-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-review { margin: 12px 0; }
+.chat-review p { grid-column: 1 / -1; }

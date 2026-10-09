@@ -9,6 +9,7 @@
    ============================================================ */
 
 import { FIREBASE_CONFIG, COLLECTION_NAME } from './config.js';
+import { validateChat, planChat, hasConflict, unchangedReservation, reservationStart } from './chat-parser.js';
 
 const FIREBASE_VERSION = '12.19.0';
 // 컬렉션별로 따로 저장 (정식: naite_reservations_local 그대로, 베타는 분리)
@@ -208,6 +209,53 @@ async function createCloudStore(onChange) {
             remove.forEach(id => batch.delete(fs.doc(db, COLLECTION_NAME, id)));
 
             await batch.commit();
+        },
+
+        async planChat(result) {
+            const snapshot = await fs.getDocsFromServer(col);
+            return planChat(result, snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+        },
+
+        /** 로컬 카톡 처리기의 재시도에도 같은 예약을 덮어쓰거나 두 번 만들지 않습니다. */
+        async applyChat(eventId, plan) {
+            if (COLLECTION_NAME !== 'naite_reservations_beta' || !/^[a-f0-9]{64}$/.test(eventId)) throw new Error('베타 채팅 식별자가 올바르지 않습니다.');
+            const uid = await getUid();
+            if (!uid) throw new Error('먼저 관리자 로그인 또는 카톡 닉네임 연결이 필요합니다.');
+            if (plan.action === 'create') {
+                const checked = validateChat({ action: 'create', data: { ...plan.data } });
+                if (checked.reason) throw new Error(checked.reason);
+                const { date, startTime, endTime, isNextDay, teamName, userName, purpose } = checked.data;
+                const data = { date, startTime, endTime, isNextDay, teamName, userName, purpose };
+                const ref = fs.doc(col, `kakao_${eventId}`);
+                const snapshot = await fs.getDocsFromServer(col);
+                const others = snapshot.docs.filter(d => d.id !== ref.id).map(d => d.data());
+                // shortcut: 수동 예약도 기존 앱처럼 겹침을 클라이언트에서 검사합니다. 동시 예약 경쟁까지 막으려면 서버 잠금이 필요합니다.
+                return fs.runTransaction(db, async tx => {
+                    const existing = await tx.get(ref);
+                    if (existing.exists()) {
+                        if (!Object.keys(data).every(k => existing.data()[k] === data[k])) throw new Error('이미 처리한 예약이 수정되었습니다. 직접 확인해 주세요.');
+                        return '이미 예약됨';
+                    }
+                    if (reservationStart(data) + 30 * 60_000 <= Date.now()) throw new Error('지난 시간의 새 예약은 추가하지 않습니다.');
+                    if (hasConflict(data, others)) throw new Error('이미 예약된 시간과 겹칩니다.');
+                    tx.set(ref, { ...data, ownerUid: uid, editedBy: uid, createdAt: new Date().toISOString(), chatSource: 'asdf', chatEventId: eventId });
+                    return '예약 추가';
+                });
+            }
+            if (plan.action !== 'cancel' || !plan.target?.id || plan.target.id.includes('/')) throw new Error('취소 대상을 확인해 주세요.');
+            return fs.runTransaction(db, async tx => {
+                const ref = fs.doc(col, plan.target.id);
+                const snapshot = await tx.get(ref);
+                if (!snapshot.exists()) return '이미 취소됨';
+                const actual = snapshot.data();
+                if (!unchangedReservation(actual, plan.target)) throw new Error('예약이 그 사이 수정되었습니다. 취소 대상을 다시 확인해 주세요.');
+                tx.set(fs.doc(db, LOGS, `kakao_${eventId}`), {
+                    action: 'delete', uid, col: COLLECTION_NAME, batch: eventId.slice(0, 32), at: fs.serverTimestamp(),
+                    res: Object.fromEntries(LOG_FIELDS.map(k => [k, actual[k] ?? ''])),
+                });
+                tx.delete(ref);
+                return '예약 취소';
+            });
         },
 
         /** 이 기기의 표시 이름 저장 ({ kakaoNick } 또는 { name }, 나머지 필드는 유지) */
