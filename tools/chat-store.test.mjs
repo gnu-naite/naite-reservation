@@ -43,7 +43,7 @@ async function setup(collectionName = 'naite_reservations_beta') {
             }
         });
         modules.set(path, module);
-        await module.link((specifier, parent) => specifier === './config.js' ? config : load(resolve(dirname(parent.identifier), specifier)));
+        await module.link((specifier, parent) => specifier === './config.js' ? config : load(resolve(dirname(parent.identifier), specifier.split('?')[0])));
         return module;
     }
     const module = await load(resolve('beta/store.js'));

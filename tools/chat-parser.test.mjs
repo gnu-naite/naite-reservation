@@ -124,4 +124,22 @@ assert.equal(planChat(parse('금일 19~20시 취소'), [legacyLesson], now).targ
 assert.equal(planChat(cancelLesson, [lesson, legacyLesson], now).target.id, 'lesson');
 assert.equal(planChat(parse('금일 20~21시 기타레슨 취소'), [lesson, legacyLesson], now).target.id, 'lesson');
 assert.equal(unchangedReservation(reservation, { ...reservation, teamName: '다른팀' }), false);
+for (const [keyword, date] of [['오늘', '2026-10-09'], ['금일', '2026-10-09'], ['내일', '2026-10-10']]) {
+    const target = { ...reservation, id: keyword, date, teamName: '범람' };
+    for (const cancelWord of ['안해요', '안 해요', '안합니다', '안 합니다']) {
+        for (const name of ['범람', '범람 합주', '범람 예약']) {
+            const parsed = parse(`${keyword} ${name} ${cancelWord}`);
+            assert.equal(parsed.action, 'cancel');
+            assert.equal(parsed.data.teamName, '범람');
+            assert.equal(planChat(parsed, [target], now).target.id, keyword);
+            assert.ok(planChat(parsed, [target, { ...target, id: 'duplicate' }], now).reason);
+        }
+        assert.equal(planChat(parse(`${keyword} 16~17시 faw away ${cancelWord}`), [target], now).target.id, keyword);
+        assert.ok(planChat(parse(`${keyword} 범람 ${cancelWord}`), [{ ...target, date: '2026-10-11' }], now).reason);
+        assert.ok(parse(`${keyword} 범람 합주 취소 ${cancelWord}`).reason);
+        assert.ok(parse(`${keyword} 범람 합주 ${cancelWord}?`).reason);
+    }
+}
+assert.equal(readChat(message('내일 16~17 합주'), Date.parse('2026-12-31T23:59:00+09:00')).data.date, '2027-01-01');
+assert.equal(readChat(message('내일 16~17 합주'), Date.parse('2026-10-31T23:59:00+09:00')).data.date, '2026-11-01');
 console.log('채팅 날짜·시간·취소 검증 통과');

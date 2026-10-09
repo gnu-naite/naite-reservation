@@ -150,16 +150,18 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(incoming[0]['sender'], '김동하')
 
     def test_http_boundary(self):
-        fake = types.SimpleNamespace(token='local-session', lock=threading.RLock(), ledger=self.ledger, png=b'preview', status=lambda: {'token': 'local-session'})
+        fake = types.SimpleNamespace(token='local-session', lock=threading.RLock(), ledger=self.ledger, png=b'preview', status=lambda: {'token': 'local-session'}, stop=lambda: None)
         server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), http.server.BaseHTTPRequestHandler)
         port = server.server_port
         server.RequestHandlerClass = make_handler(fake, port)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         origin = f'http://127.0.0.1:{port}'
-        def request(path, headers=None, body=None):
-            req = urllib.request.Request(origin + path, headers=headers or {}, data=json.dumps(body).encode() if body else None)
+        def request(path, headers=None, body=None, method=None, cors=False):
+            req = urllib.request.Request(origin + path, headers=headers or {}, data=json.dumps(body).encode() if body else None, method=method)
             try:
                 with urllib.request.urlopen(req) as response:
+                    if cors:
+                        return response.status, response.headers.get('Access-Control-Allow-Origin'), response.headers.get('Access-Control-Allow-Headers')
                     return response.status
             except urllib.error.HTTPError as error:
                 return error.code
@@ -174,6 +176,18 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(request('/beta/%2e%2e/%2e%2e/.env'), 404)
             self.assertEqual(request('/beta/'), 200)
             self.assertEqual(request('/beta/chat-parser.js'), 200)
+            shared = {'Origin': 'https://gnu-naite.github.io', 'Sec-Fetch-Site': 'cross-site'}
+            self.assertEqual(request('/api/chat/status', shared, cors=True), (200, shared['Origin'], 'Content-Type, X-Chat-Token'))
+            self.assertEqual(request('/api/chat/preview', shared), 200)
+            self.assertEqual(request('/api/chat/control', shared, {'action': 'stop'}), 403)
+            self.assertEqual(request('/api/chat/control', {**shared, 'X-Chat-Token': 'wrong'}, {'action': 'stop'}), 403)
+            self.assertEqual(request('/api/chat/control', {**shared, 'X-Chat-Token': fake.token}, {'action': 'stop'}), 200)
+            preflight = {**shared, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type,x-chat-token'}
+            self.assertEqual(request('/api/chat/control', preflight, method='OPTIONS', cors=True), (204, shared['Origin'], 'Content-Type, X-Chat-Token'))
+            self.assertEqual(request('/api/chat/control', {**preflight, 'Origin': 'https://evil.example'}, method='OPTIONS'), 403)
+            self.assertEqual(request('/api/chat/control', {**preflight, 'Access-Control-Request-Method': 'DELETE'}, method='OPTIONS'), 403)
+            for path in ['/beta/', '/.git/config', '/api/chat/../../beta/index.html', '/tools/kakao-bridge/.local/state.json']:
+                self.assertEqual(request(path, shared), 403)
         finally:
             server.shutdown()
             server.server_close()

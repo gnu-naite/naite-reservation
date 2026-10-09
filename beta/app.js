@@ -2,8 +2,8 @@
    나이테 동아리방 예약 — 메인 로직
    ============================================================ */
 
-import { createStore, randomToken } from './store.js?v=7';
-import { initChatBridge } from './chat-bridge.js?v=4';
+import { createStore, randomToken } from './store.js?v=8';
+import { initChatBridge } from './chat-bridge.js?v=5';
 import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
 
 /* ---------- i18n 사전 ---------- */

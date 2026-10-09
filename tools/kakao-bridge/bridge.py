@@ -343,14 +343,18 @@ def make_handler(bridge, port):
     origin = f'http://localhost:{port}'
     hosts = {f'localhost:{port}', f'127.0.0.1:{port}'}
     origins = {origin, f'http://127.0.0.1:{port}'}
+    shared_origin = 'https://gnu-naite.github.io'
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
 
         def allowed(self):
+            request_origin = self.headers.get('Origin', origin)
+            shared = request_origin == shared_origin and urllib.parse.urlsplit(self.path).path in {
+                '/api/chat/status', '/api/chat/preview', '/api/chat/control', '/api/chat/prepare', '/api/chat/finish'}
             return (self.headers.get('Host') in hosts and
-                    self.headers.get('Origin', origin) in origins and
-                    self.headers.get('Sec-Fetch-Site', 'none') in ['same-origin', 'none'])
+                    (shared or (request_origin in origins and
+                     self.headers.get('Sec-Fetch-Site', 'none') in ['same-origin', 'none'])))
 
         def reply(self, status, data, content_type='application/json'):
             if content_type == 'application/json':
@@ -359,12 +363,23 @@ def make_handler(bridge, port):
             self.send_header('Content-Type', content_type)
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
+            if self.allowed() and self.headers.get('Origin') == shared_origin:
+                self.send_header('Access-Control-Allow-Origin', shared_origin)
+                self.send_header('Vary', 'Origin')
+                self.send_header('Access-Control-Allow-Methods', 'GET, POST')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Chat-Token')
+                self.send_header('Access-Control-Allow-Private-Network', 'true')
             self.end_headers()
             self.wfile.write(data)
 
+        def do_OPTIONS(self):
+            if not self.allowed() or self.headers.get('Access-Control-Request-Method') not in ['GET', 'POST']:
+                return self.reply(403, {'error': '허용되지 않은 페이지입니다.'})
+            return self.reply(204, b'', 'text/plain')
+
         def do_GET(self):
             if not self.allowed():
-                return self.reply(403, {'error': '로컬 페이지에서만 접근할 수 있습니다.'})
+                return self.reply(403, {'error': '로컬 베타 또는 나이테 공유 페이지에서만 접근할 수 있습니다.'})
             path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
             if path == '/api/chat/status':
                 return self.reply(200, bridge.status())

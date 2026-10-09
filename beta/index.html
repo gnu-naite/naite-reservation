@@ -56,7 +56,8 @@
         <main class="layout">
             <section id="chatCard" class="card chat-card">
                 <div class="card-head"><h2>카톡 자동 예약 · asdf 테스트</h2></div>
-                <p id="chatStatus" role="status">PC에서 로컬 OCR 처리기를 실행한 뒤 <a href="http://localhost:5173/beta/">로컬 베타</a>를 열어 주세요. API 키는 PC에만 저장합니다.</p>
+                <p id="chatStatus" role="status">카카오톡 asdf 방과 OCR 처리기가 실행 중인 PC에서 연결하세요. 이 공유 페이지를 켜두면 예약을 자동 반영합니다. API 키는 PC에만 저장합니다.</p>
+                <button id="chatConnect" type="button" class="secondary-btn">이 PC의 OCR 연결</button>
                 <div id="chatControls" class="hidden">
                     <div class="chat-settings">
                         <label class="field">내 카톡 닉네임 (본인 말풍선용)<input id="chatNickname" maxlength="20" autocomplete="off"></label>
@@ -334,7 +335,7 @@
 
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=26"></script>
+    <script type="module" src="app.js?v=27"></script>
 </body>
 
 </html>

@@ -1,4 +1,4 @@
-import { readChat, validateChat, koreanDate } from './chat-parser.js';
+import { readChat, validateChat, koreanDate, CANCEL_WORDS } from './chat-parser.js?v=2';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const labels = { baseline: '시작 전에 보였던 대화 · 자동 처리 제외', pending: '처리 대기', prepared: '저장 재시도 대기', held: '확인 필요', done: '완료', ignored: '제외' };
@@ -8,12 +8,16 @@ export function initChatBridge({ getStore, canWrite }) {
     const note = document.getElementById('chatStatus');
     const list = document.getElementById('chatEvents');
     const controls = document.getElementById('chatControls');
-    if (!['localhost', '127.0.0.1'].includes(location.hostname)) return;
+    const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+    if (!local && location.origin !== 'https://gnu-naite.github.io') return;
+    const api = local ? '/api/chat/' : 'http://127.0.0.1:5173/api/chat/';
+    const connectButton = document.getElementById('chatConnect');
+    connectButton.classList.toggle('hidden', local);
     let token, busy = false, enabled = false, configured = false, events = [];
     const options = () => ({ nickname: document.getElementById('chatNickname').value,
         top: Number(document.getElementById('chatTop').value), bottom: Number(document.getElementById('chatBottom').value) });
     async function post(path, body) {
-        const response = await fetch(`/api/chat/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Chat-Token': token }, body: JSON.stringify(body) });
+        const response = await fetch(api + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Chat-Token': token }, body: JSON.stringify(body), credentials: 'omit' });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '로컬 처리기에 연결하지 못했습니다.');
         return result;
@@ -39,7 +43,7 @@ export function initChatBridge({ getStore, canWrite }) {
         list.innerHTML = events.filter(e => e.status !== 'ignored').slice(-30).reverse().map(event => {
             const m = event.message;
             const result = readChat(m);
-            const cancelling = result.action === 'cancel' || (!result.action && /취소|없습니다|없어요|없음/.test(m.text));
+            const cancelling = result.action === 'cancel' || (!result.action && CANCEL_WORDS.test(m.text));
             const r = result.data || { date: m.sentDate || koreanDate(), userName: m.sender || '', purpose: /레슨/.test(m.text) ? '레슨' : /합주|추합/.test(m.text) ? '합주' : '기타' };
             const field = (label, name, type, value) => `<label class="field">${label}<input name="${name}" type="${type}" value="${escape(value)}" ${name === 'date' ? 'required' : ''} ${name === 'teamName' ? 'maxlength="30"' : name === 'userName' ? 'maxlength="20"' : ''}></label>`;
             const pending = ['pending', 'held'].includes(event.status);
@@ -60,7 +64,7 @@ export function initChatBridge({ getStore, canWrite }) {
         if (busy) return;
         busy = true;
         try {
-            const response = await fetch('/api/chat/status');
+            const response = await fetch(api + 'status', { credentials: 'omit' });
             if (!response.ok) throw new Error('로컬 OCR 처리기를 먼저 실행해 주세요.');
             const status = await response.json();
             token = status.token;
@@ -69,7 +73,7 @@ export function initChatBridge({ getStore, canWrite }) {
                 for (const [id, value] of [['chatNickname', status.nickname], ['chatTop', status.top], ['chatBottom', status.bottom]]) document.getElementById(id).value = value;
                 configured = true;
             }
-            note.textContent = `${status.room} · ${status.note}${canWrite() ? '' : ' · 저장하려면 하단에서 관리자 로그인을 해 주세요.'}`;
+            note.textContent = `${status.room} · ${status.note}${canWrite() ? '' : ' · 저장하려면 관리자 로그인 또는 카톡 닉네임 연결이 필요합니다.'}`;
             events = status.events;
             enabled = status.running;
             const startButton = controls.querySelector('[data-chat-control="start"]');
@@ -95,10 +99,11 @@ export function initChatBridge({ getStore, canWrite }) {
                 }
             }
             const preview = document.getElementById('chatPreview');
-            if (preview.closest('details').open) preview.src = `/api/chat/preview?t=${Date.now()}`;
+            if (preview.closest('details').open) await showPreview();
             render();
+            return true;
         } catch (error) {
-            note.textContent = error.message;
+            note.textContent = local ? error.message : '이 PC의 OCR 처리기를 실행하고 브라우저의 로컬 네트워크 접근을 허용해 주세요. 연결을 다시 시도할 수 있습니다.';
         } finally { busy = false; }
     }
     controls.addEventListener('click', async event => {
@@ -117,8 +122,18 @@ export function initChatBridge({ getStore, canWrite }) {
         finally { busy = false; }
         await poll();
     });
-    card.querySelector('.chat-preview').addEventListener('toggle', event => {
-        if (event.target.open) document.getElementById('chatPreview').src = `/api/chat/preview?t=${Date.now()}`;
+    async function showPreview() {
+        const response = await fetch(api + 'preview', { credentials: 'omit' });
+        if (!response.ok) return;
+        const preview = document.getElementById('chatPreview');
+        const previous = preview.src;
+        preview.src = URL.createObjectURL(await response.blob());
+        if (previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+    }
+    card.querySelector('.chat-preview').addEventListener('toggle', async event => {
+        if (event.target.open) {
+            try { await showPreview(); } catch (error) { note.textContent = error.message; }
+        }
     });
     list.addEventListener('click', async click => {
         const button = click.target.closest('[data-chat-action]');
@@ -151,6 +166,11 @@ export function initChatBridge({ getStore, canWrite }) {
         finally { busy = false; }
         await poll();
     });
-    poll();
-    setInterval(poll, 3000);
+    let polling = false;
+    async function connect() {
+        const connected = await poll();
+        if (!polling && (local || connected)) { setInterval(poll, 3000); polling = true; }
+    }
+    connectButton.addEventListener('click', connect);
+    if (local) connect();
 }

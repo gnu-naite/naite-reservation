@@ -2,6 +2,7 @@
 const DAY = 86_400_000;
 const hold = reason => ({ reason });
 const pad = n => String(n).padStart(2, '0');
+export const CANCEL_WORDS = /취소|없습니다|없어요|없음|안\s*(?:합니다|해요|할|하겠)|하지\s*않/;
 export const koreanDate = (now = Date.now()) => new Date(now + 9 * 3_600_000).toISOString().slice(0, 10);
 export function validDate(s) {
     return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) &&
@@ -13,7 +14,7 @@ export const reservationEnd = r => Date.parse(`${r.date}T${r.endTime}:00+09:00`)
 
 export function readChat(message, now = Date.now()) {
     const text = String(message.text ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
-    if (!/(합주|추합|레슨|취소|수정|변경|\[예약\]|예약\s*(?:하|신청))/.test(text) && !/\d{1,2}\s*(?:시|:|[~～〜∼–—-]|\s+\d{1,2})/.test(text)) return { ignored: true };
+    if (!CANCEL_WORDS.test(text) && !/(합주|추합|레슨|수정|변경|\[예약\]|예약\s*(?:하|신청))/.test(text) && !/\d{1,2}\s*(?:시|:|[~～〜∼–—-]|\s+\d{1,2})/.test(text)) return { ignored: true };
     if (message.complete !== true) return hold('말풍선·닉네임·날짜가 잘렸거나 OCR이 불확실합니다.');
     if (message.sentDate && !validDate(message.sentDate)) return hold('메시지를 보낸 날짜를 확인해 주세요.');
     if (/[?？]|(?:할|될|일|있을)까|가능|나요|건가요|어때|해도\s*돼|연기|말고|아니라|아닙니다|아니에요|안\s*(?:취소|변경|수정)|(?:취소|변경|수정).*(?:않|아님|아니|안|없)|하지\s*(?:마|말)|못\s*(?:합니다|해요|해|할)|안\s*(?:함|해(?:\s|$)|했)|없.*않/.test(text)) return hold('질문·부정·금지 표현은 직접 확인해 주세요.');
@@ -21,7 +22,7 @@ export function readChat(message, now = Date.now()) {
     const purposes = [...text.matchAll(/추가\s*합주|추합|합주|레슨/g)];
     if (purposes.length > 1) return hold('메시지 한 개에 예약 내용이 여러 개 있습니다.');
     const purpose = purposes[0]?.[0] === '레슨' ? '레슨' : purposes.length ? '합주' : '기타';
-    const cancel = /취소|없습니다|없어요|없음|안\s*(?:합니다|해요|할|하겠)|하지\s*않/.test(text);
+    const cancel = CANCEL_WORDS.test(text);
     const action = cancel ? 'cancel' : 'create';
     let rest = text;
     const dates = [...text.matchAll(/(?<!\d)(?:(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일|(\d{4})-(\d{2})-(\d{2})|(?:(\d{4})년\s*)?(\d{1,2})[/.](\d{1,2})(?:일(?!요일))?|(\d{1,2})일|오늘|금일|내일|모레)(?!\d)/g)];
@@ -47,7 +48,7 @@ export function readChat(message, now = Date.now()) {
     const clock = '(오전|오후|아침|저녁|밤)?\\s*(\\d{1,2})(?::(\\d{2})|시(?:\\s*(?:(반)|(\\d{1,2})분))?)?';
     const separator = '(?:\\s*(?:~|～|〜|∼|[-–—]|부터)\\s*|\\s+|(?<=시|분|반|:\\d{2}))';
     const ranges = [...rest.matchAll(new RegExp(`(?<!\\d)${clock}${separator}${clock}(?!\\d|:)(?:\\s*까지)?`, 'g'))];
-    const teamFrom = value => value.split(purposes[0]?.[0] || (action === 'cancel' ? '취소' : '\u0000'))[0]
+    const teamFrom = value => value.split(purposes[0]?.[0] || (action === 'cancel' ? CANCEL_WORDS : '\u0000'))[0]
         .replace(/^\s*(?:예약|\[예약\]|팀명\s*:)\s*/, '').replace(/예약\s*$/, '')
         .replace(/^[\s/:,-]+|[\s/:,-]+$/g, '').replace(/[은는]\s*$/, '').replace(/\s+/g, ' ').trim();
     const namedTeam = teamFrom(rest.replace(ranges[0]?.[0] || '\u0000', ' '));
