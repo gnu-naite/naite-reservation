@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { createStore, randomToken } from './store.js?v=8';
-import { initChatBridge } from './chat-bridge.js?v=5';
+import { initChatBridge } from './chat-bridge.js?v=6';
 import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
 
 /* ---------- i18n 사전 ---------- */

@@ -13,6 +13,7 @@ export function initChatBridge({ getStore, canWrite }) {
     const api = local ? '/api/chat/' : 'http://127.0.0.1:5173/api/chat/';
     const connectButton = document.getElementById('chatConnect');
     connectButton.classList.toggle('hidden', local);
+    connectButton.disabled = false;
     let token, busy = false, enabled = false, configured = false, events = [];
     const options = () => ({ nickname: document.getElementById('chatNickname').value,
         top: Number(document.getElementById('chatTop').value), bottom: Number(document.getElementById('chatBottom').value) });
@@ -64,7 +65,7 @@ export function initChatBridge({ getStore, canWrite }) {
         if (busy) return;
         busy = true;
         try {
-            const response = await fetch(api + 'status', { credentials: 'omit' });
+            const response = await fetch(api + 'status', { credentials: 'omit', signal: AbortSignal.timeout(30_000) });
             if (!response.ok) throw new Error('로컬 OCR 처리기를 먼저 실행해 주세요.');
             const status = await response.json();
             token = status.token;
@@ -168,7 +169,10 @@ export function initChatBridge({ getStore, canWrite }) {
     });
     let polling = false;
     async function connect() {
+        connectButton.disabled = true;
+        note.textContent = '이 PC의 OCR 처리기에 연결 중입니다. 로컬 네트워크 접근 요청이 뜨면 허용해 주세요.';
         const connected = await poll();
+        connectButton.disabled = false;
         if (!polling && (local || connected)) { setInterval(poll, 3000); polling = true; }
     }
     connectButton.addEventListener('click', connect);
