@@ -151,6 +151,26 @@ assert.equal(planChat(parse('10/11 farawayfromthehome 합주 취소'), [englishR
 assert.ok(planChat(parse('오늘 멸종 합주 취소'), [{ ...addedTitle, teamName: '멸종팀 추가' }], now).reason);
 assert.ok(planChat(parse('오늘 멸종 합주 취소'), [{ ...addedTitle, date: '2026-10-10' }], now).reason);
 assert.ok(planChat(parse('오늘 멸종 합주 취소'), [addedTitle, { ...addedTitle, id: 'base-title', teamName: '멸종' }], now).reason);
+for (const title of ['멸종추가', '멸-종_추가!!', '멸 종 추 가', '★멸종★ 추 가 합 주 예 약']) {
+    for (const text of ['오늘멸 종합주취소', '오늘 멸-종! 합주 취소', '오늘 [멸_종] 취소']) {
+        assert.equal(planChat(parse(text), [{ ...addedTitle, teamName: title }], now).target.id, 'added-title');
+    }
+}
+for (const name of ['FAR_AWAY-from.the(home)', '[far away from the home]', 'far!away@from#the$home', 'far★away★from★the★home', '<far-away-from-the-home>']) {
+    assert.equal(planChat(parse(`10/11 ${name} 합주 취소`), [englishReservation], now).target.id, 'english');
+    assert.equal(planChat(parse('10/11 farawayfromthehome 취소'), [{ ...englishReservation, teamName: name }], now).target.id, 'english');
+}
+assert.equal(planChat(parse('10/11 f a r a w a y f r o m t h e h o m e 취소'), [englishReservation], now).target.id, 'english');
+assert.ok(parse('10/11 11~12 <far-away> 합주').reason);
+assert.ok(parse('10/11 11~12 f a r a w a y f r o m t h e h o m e 합주').reason);
+assert.ok(planChat(parse('오늘 멸-종 취소'), [addedTitle, { ...addedTitle, id: 'punctuation-title', teamName: '멸_종' }], now).reason);
+assert.ok(planChat(parse('오늘 *** 취소'), [{ ...addedTitle, teamName: '!!!' }], now).reason);
+assert.ok(planChat(parse('오늘 추가 취소'), [{ ...addedTitle, teamName: '예약' }], now).reason);
+const numberedTitle = { ...addedTitle, teamName: 'U-2' };
+assert.equal(planChat(parse('오늘 U_2 취소'), [numberedTitle], now).target.id, 'added-title');
+assert.ok(planChat(parse('오늘 U_3 취소'), [numberedTitle], now).reason);
+assert.equal(planChat(parse('오늘 16시~17시 *** 취소'), [reservation], now).target.id, 'one');
+assert.equal(parse('10/11 11~12 far-away 합주').data.teamName, 'far-away');
 for (const [index, day] of [...'월화수목금토일'].entries()) {
     const expected = `2026-10-${String(5 + index).padStart(2, '0')}`;
     for (const word of [day, `${day}요일`, `${day}요일에`, `${day}요일은`, `${day}요일날`, `이번 주 ${day}`, `이번주 ${day}요일`]) {

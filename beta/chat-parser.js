@@ -2,6 +2,8 @@
 const DAY = 86_400_000;
 const hold = reason => ({ reason });
 const pad = n => String(n).padStart(2, '0');
+const teamKey = name => typeof name === 'string' ? name.normalize('NFC')
+    .replace(/[^\p{L}\p{N}]/gu, '').replace(/(?:추가합주|추가|추합|합주|예약)+$/, '').toLowerCase() : '';
 export const CANCEL_WORDS = /취소|없습니다|없어요|없음|안\s*(?:합니다|해요|할|하겠)|하지\s*않/;
 export const koreanDate = (now = Date.now()) => new Date(now + 9 * 3_600_000).toISOString().slice(0, 10);
 export function validDate(s) {
@@ -92,7 +94,8 @@ export function validateChat(result) {
     if (!['create', 'cancel'].includes(result.action) || !r || !validDate(r.date)) return hold('날짜와 작업을 확인해 주세요.');
     const byTeam = result.action === 'cancel' && r.startTime == null && r.endTime == null;
     if (result.action === 'create' || byTeam) {
-        if (typeof r.teamName !== 'string' || !r.teamName.trim() || r.teamName.length > 30 || /[\n<>]/.test(r.teamName)) return hold('팀명을 확인해 주세요.');
+        const name = byTeam ? teamKey(r.teamName) : r.teamName;
+        if (typeof name !== 'string' || !name.trim() || name.length > 30 || (!byTeam && /[\n<>]/.test(name))) return hold('팀명을 확인해 주세요.');
     }
     if (result.action === 'create') {
         if (typeof r.userName !== 'string' || !r.userName.trim() || r.userName.length > 20) return hold('예약자 닉네임을 확인해 주세요.');
@@ -111,15 +114,14 @@ export function planChat(result, reservations, now = Date.now()) {
     if (checked.reason) return checked;
     const r = checked.data;
     if (checked.action === 'cancel') {
-        // 예약 제목 끝의 용도·추가 표시는 팀명 비교에서 빼고, 여러 건이면 취소하지 않습니다.
-        const teamKey = name => typeof name === 'string' ? name.normalize('NFC').trim()
-            .replace(/(?:\s+(?:추가(?:\s*합주)?|추합|합주|예약))+$/, '').replace(/\s+/g, '').toLowerCase() : '';
+        // 팀명은 글자·숫자만 비교하며, 기호를 뺀 이름이 없거나 여러 건이면 취소하지 않습니다.
+        const byTeam = r.startTime == null && r.endTime == null;
+        if ((byTeam || r.possibleTeamName) && !teamKey(r.possibleTeamName || r.teamName)) return hold('팀명에 글자나 숫자가 필요합니다. 취소할 팀명 또는 시간을 확인해 주세요.');
         const namedCandidates = r.possibleTeamName ? reservations.filter(x => x.date === r.date && teamKey(x.teamName) === teamKey(r.possibleTeamName)) : [];
         if (r.possibleTeamName) {
             if (namedCandidates.length !== 1) return hold('팀명 속 숫자와 시간이 모호합니다. 날짜 뒤에 시간을 쓰거나 시·분을 표시해 주세요.');
             return { action: 'cancel', target: namedCandidates[0] };
         }
-        const byTeam = r.startTime == null && r.endTime == null;
         const candidates = reservations.filter(x => x.date === r.date && (byTeam
             ? teamKey(x.teamName) === teamKey(r.teamName)
             : x.startTime === r.startTime && x.endTime === r.endTime));

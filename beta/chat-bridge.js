@@ -1,4 +1,4 @@
-import { readChat, validateChat, koreanDate, CANCEL_WORDS } from './chat-parser.js?v=3';
+import { readChat, validateChat, koreanDate, CANCEL_WORDS } from './chat-parser.js?v=4';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const labels = { baseline: '시작 전에 보였던 대화 · 자동 처리 제외', pending: '처리 대기', prepared: '저장 재시도 대기', held: '확인 필요', done: '완료', ignored: '제외' };
@@ -56,7 +56,7 @@ export function initChatBridge({ getStore, canWrite }) {
                 ${field('예약 날짜', 'date', 'date', r.date)}${field('팀명', 'teamName', 'text', r.teamName)}${field('카톡 닉네임', 'userName', 'text', r.userName)}
                 ${field('시작 (24시간제)', 'startTime', 'time', r.startTime)}${field('종료 (24시간제)', 'endTime', 'time', r.endTime)}
                 <label class="field">사용 목적<select name="purpose"><option value="합주">합주</option><option value="레슨" ${r.purpose === '레슨' ? 'selected' : ''}>레슨</option><option value="기타" ${r.purpose === '기타' ? 'selected' : ''}>기타</option></select></label>
-                <p>유형: 한 번만. 요일만 쓰면 이번 주 월요일~일요일로 읽습니다. 오전·오후가 없으면 24시간제로 읽고, 반은 30분입니다. 취소는 시간이 있으면 날짜·시간으로, 없으면 제목 끝의 추가·합주·추합·예약 표시와 띄어쓰기 차이를 뺀 팀명으로 한 건만 찾습니다. 새 예약은 겹치면 반려하고, 목적이 없으면 기타로 등록합니다. 수정은 예약 화면에서 직접 처리하세요.</p>
+                <p>유형: 한 번만. 요일만 쓰면 이번 주 월요일~일요일로 읽습니다. 오전·오후가 없으면 24시간제로 읽고, 반은 30분입니다. 취소는 시간이 있으면 날짜·시간으로, 없으면 팀명의 띄어쓰기·특수문자와 제목 끝의 추가·합주·추합·예약 표시를 빼고 글자·숫자가 같은 한 건만 찾습니다. 새 예약은 겹치면 반려하고, 목적이 없으면 기타로 등록합니다. 수정은 예약 화면에서 직접 처리하세요.</p>
                 <button class="primary-btn" type="submit">확인 후 처리</button></form></details>
                 <button type="button" class="secondary-btn" data-chat-action="ignore">이 메시지 제외</button>` : ''}</li>`;
         }).join('') || '<li>인식 결과가 여기에 표시됩니다. 시작할 때 기존 대화는 건너뜁니다.</li>';
