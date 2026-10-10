@@ -3,7 +3,7 @@ import { readChat, validateChat, koreanDate, CANCEL_WORDS } from './chat-parser.
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const labels = { baseline: '시작 전에 보였던 대화 · 자동 처리 제외', pending: '처리 대기', prepared: '저장 재시도 대기', held: '확인 필요', done: '완료', ignored: '제외' };
 
-export function initChatBridge({ getStore, canWrite }) {
+export function initChatBridge({ getStore, isAdmin }) {
     const card = document.getElementById('chatCard');
     const note = document.getElementById('chatStatus');
     const list = document.getElementById('chatEvents');
@@ -18,6 +18,7 @@ export function initChatBridge({ getStore, canWrite }) {
     const options = () => ({ nickname: document.getElementById('chatNickname').value,
         top: Number(document.getElementById('chatTop').value), bottom: Number(document.getElementById('chatBottom').value) });
     async function post(path, body) {
+        if (!isAdmin()) throw new Error('OCR 처리는 관리자 로그인 후 사용할 수 있습니다.');
         const response = await fetch(api + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Chat-Token': token }, body: JSON.stringify(body), credentials: 'omit' });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || '로컬 처리기에 연결하지 못했습니다.');
@@ -29,10 +30,11 @@ export function initChatBridge({ getStore, canWrite }) {
         event.note = message;
     }
     async function apply(event, result) {
-        if (!canWrite() || getStore()?.mode !== 'cloud') throw new Error('베타의 관리자 로그인 또는 카톡 닉네임 연결이 필요합니다.');
+        if (!isAdmin() || getStore()?.mode !== 'cloud') throw new Error('OCR 처리는 관리자 로그인 후 사용할 수 있습니다.');
         const plan = event.plan || result;
         if (plan.reason) throw new Error(plan.reason);
         await post('prepare', { id: event.id, plan });
+        if (!isAdmin()) return;
         event.plan = plan;
         event.status = 'prepared';
         const outcome = await getStore().applyChat(event.id, plan);
@@ -62,27 +64,28 @@ export function initChatBridge({ getStore, canWrite }) {
         }).join('') || '<li>인식 결과가 여기에 표시됩니다. 시작할 때 기존 대화는 건너뜁니다.</li>';
     }
     async function poll() {
-        if (busy) return;
+        if (!isAdmin() || busy) return;
         busy = true;
         try {
             const response = await fetch(api + 'status', { credentials: 'omit', signal: AbortSignal.timeout(30_000) });
             if (!response.ok) throw new Error('로컬 OCR 처리기를 먼저 실행해 주세요.');
             const status = await response.json();
+            if (!isAdmin()) return;
             token = status.token;
             controls.classList.remove('hidden');
             if (!configured) {
                 for (const [id, value] of [['chatNickname', status.nickname], ['chatTop', status.top], ['chatBottom', status.bottom]]) document.getElementById(id).value = value;
                 configured = true;
             }
-            note.textContent = `${status.room} · ${status.note}${canWrite() ? '' : ' · 저장하려면 관리자 로그인 또는 카톡 닉네임 연결이 필요합니다.'}`;
+            note.textContent = `${status.room} · ${status.note}`;
             events = status.events;
             enabled = status.running;
             const startButton = controls.querySelector('[data-chat-control="start"]');
             startButton.disabled = status.running;
             startButton.textContent = status.running ? '자동 처리 중' : '새 메시지 자동 처리 시작';
-            if (status.running && canWrite() && getStore()?.mode === 'cloud') {
+            if (status.running && getStore()?.mode === 'cloud') {
                 for (const event of events.filter(e => e.status === 'pending')) {
-                    if (!enabled) break;
+                    if (!enabled || !isAdmin()) break;
                     const result = readChat(event.message);
                     if (result.ignored) await finish(event, 'ignored', '예약 메시지 아님');
                     else if (result.reason) await finish(event, 'held', result.reason);
@@ -90,15 +93,16 @@ export function initChatBridge({ getStore, canWrite }) {
                         try {
                             // 취소 대상을 서버의 최신 예약표에서 찾습니다.
                             const plan = await getStore().planChat(result);
-                            if (!enabled) break;
+                            if (!enabled || !isAdmin()) break;
                             if (plan.reason) await finish(event, 'held', plan.reason);
                             else await apply(event, plan);
                         } catch (error) {
-                            await finish(event, 'held', error.message);
+                            if (isAdmin()) await finish(event, 'held', error.message);
                         }
                     }
                 }
             }
+            if (!isAdmin()) return;
             const preview = document.getElementById('chatPreview');
             if (preview.closest('details').open) await showPreview();
             render();
@@ -108,6 +112,7 @@ export function initChatBridge({ getStore, canWrite }) {
         } finally { busy = false; }
     }
     controls.addEventListener('click', async event => {
+        if (!isAdmin()) return;
         const action = event.target.closest('[data-chat-control]')?.dataset.chatControl;
         if (!action) return;
         if (action === 'stop') {
@@ -124,11 +129,14 @@ export function initChatBridge({ getStore, canWrite }) {
         await poll();
     });
     async function showPreview() {
+        if (!isAdmin()) return;
         const response = await fetch(api + 'preview', { credentials: 'omit' });
         if (!response.ok) return;
+        const blob = await response.blob();
+        if (!isAdmin()) return;
         const preview = document.getElementById('chatPreview');
         const previous = preview.src;
-        preview.src = URL.createObjectURL(await response.blob());
+        preview.src = URL.createObjectURL(blob);
         if (previous.startsWith('blob:')) URL.revokeObjectURL(previous);
     }
     card.querySelector('.chat-preview').addEventListener('toggle', async event => {
@@ -138,19 +146,19 @@ export function initChatBridge({ getStore, canWrite }) {
     });
     list.addEventListener('click', async click => {
         const button = click.target.closest('[data-chat-action]');
-        if (!button || busy) return;
+        if (!isAdmin() || !button || busy) return;
         const event = events.find(e => e.id === button.closest('[data-chat-id]').dataset.chatId);
         busy = true;
         try {
             if (button.dataset.chatAction === 'ignore') await finish(event, 'ignored', '사용자가 제외함');
             else await apply(event, event.plan);
-        } catch (error) { await finish(event, 'held', error.message); }
+        } catch (error) { if (isAdmin()) await finish(event, 'held', error.message); }
         finally { busy = false; }
         await poll();
     });
     list.addEventListener('submit', async submit => {
         submit.preventDefault();
-        if (busy) return;
+        if (!isAdmin() || busy) return;
         const event = events.find(e => e.id === submit.target.closest('[data-chat-id]').dataset.chatId);
         const fields = Object.fromEntries(new FormData(submit.target));
         const { action, ...data } = fields;
@@ -163,18 +171,41 @@ export function initChatBridge({ getStore, canWrite }) {
             const plan = await getStore().planChat(checked);
             if (plan.reason) throw new Error(plan.reason);
             await apply(event, plan);
-        } catch (error) { await finish(event, 'held', error.message); }
+        } catch (error) { if (isAdmin()) await finish(event, 'held', error.message); }
         finally { busy = false; }
         await poll();
     });
-    let polling = false;
+    let pollTimer, allowed = false;
     async function connect() {
+        if (!isAdmin()) return;
         connectButton.disabled = true;
         note.textContent = '이 PC의 OCR 처리기에 연결 중입니다. 로컬 네트워크 접근 요청이 뜨면 허용해 주세요.';
         const connected = await poll();
-        connectButton.disabled = false;
-        if (!polling && (local || connected)) { setInterval(poll, 3000); polling = true; }
+        connectButton.disabled = !isAdmin();
+        if (isAdmin() && !pollTimer && (local || connected)) pollTimer = setInterval(poll, 3000);
     }
     connectButton.addEventListener('click', connect);
-    if (local) connect();
+    function updateAccess() {
+        const admin = isAdmin();
+        card.classList.toggle('hidden', !admin);
+        connectButton.disabled = !admin || busy;
+        if (!admin) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = undefined;
+            enabled = false;
+            configured = false;
+            token = undefined;
+            events = [];
+            controls.classList.add('hidden');
+            list.innerHTML = '';
+            const preview = document.getElementById('chatPreview');
+            if (preview.src.startsWith('blob:')) URL.revokeObjectURL(preview.src);
+            preview.src = '';
+        }
+        const startLocal = admin && !allowed && local;
+        allowed = admin;
+        if (startLocal) connect();
+    }
+    updateAccess();
+    return updateAccess;
 }

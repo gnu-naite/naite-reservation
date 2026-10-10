@@ -62,4 +62,6 @@ node tools/chat-variants.test.mjs
 ./.venv/Scripts/python.exe -X utf8 -m unittest discover -s tools/kakao-bridge -p test_bridge.py
 ```
 
-GitHub 공유 페이지를 켜둔 캡처 PC에서 자동 반영할 수 있습니다. 별도의 localhost 페이지는 켜둘 필요가 없습니다. PC의 OCR 처리기와 asdf 창은 계속 실행해야 하며, 다른 PC·휴대폰에서는 저장된 예약표만 공유됩니다. 공유 페이지 연결이 막히면 최신 Chrome·Edge와 [로컬 네트워크 권한 안내](https://developer.chrome.com/blog/local-network-access)를 확인하세요.
+OCR 패널은 등록된 관리자 계정으로 로그인했을 때만 표시합니다. 카톡 닉네임 연결만 한 일반 방문자는 예약표만 보고 OCR 처리기에 요청하지 않습니다. 관리자 로그아웃 시 패널·인식 이력을 숨기고 이 페이지의 OCR 조회와 예약 처리를 멈춥니다. 다른 관리자 페이지와 PC의 캡처 처리기는 별도로 실행 중일 수 있습니다.
+
+관리자로 로그인한 GitHub 공유 페이지를 켜둔 캡처 PC에서 자동 반영할 수 있습니다. 별도의 localhost 페이지는 켜둘 필요가 없습니다. PC의 OCR 처리기와 asdf 창은 계속 실행해야 하며, 다른 PC·휴대폰에서는 저장된 예약표만 공유됩니다. 공유 페이지 연결이 막히면 최신 Chrome·Edge와 [로컬 네트워크 권한 안내](https://developer.chrome.com/blog/local-network-access)를 확인하세요.

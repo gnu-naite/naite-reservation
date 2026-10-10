@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { createStore, randomToken } from './store.js?v=10';
-import { initChatBridge } from './chat-bridge.js?v=8';
+import { initChatBridge } from './chat-bridge.js?v=9';
 import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
 
 /* ---------- i18n 사전 ---------- */
@@ -327,6 +327,7 @@ let users = new Map();            // 관리자용: uid → { kakaoNick, name }
 let logs = [];                    // 관리자용: 수정·취소 기록 (최신순)
 let logDay = fmtDate(new Date()); // 관리자용: 기록 카드에서 보고 있는 날짜 'YYYY-MM-DD' (처음엔 오늘)
 let unwatchUsers = null;
+let updateChatAccess;
 let resolveUserReady;
 const userReady = new Promise(r => (resolveUserReady = r));   // 익명 로그인까지 끝났을 때
 
@@ -1428,6 +1429,7 @@ function updateAdminUI() {
     el.adminLoginBtn.classList.toggle('hidden', !cloud || google);
     el.adminInfo.classList.toggle('hidden', !google);
     el.adminBadge.classList.toggle('hidden', !isAdmin());
+    updateChatAccess?.();
     updateKakaoBtn();
 
     // 관리자면 기기별 이름과 수정·취소 기록을 받아 누가 무엇을 했는지 표시
@@ -1724,7 +1726,7 @@ async function init() {
         askKakaoOnce();
     });
 
-    initChatBridge({ getStore: () => store, canWrite: () => !authUnavailable && !!currentUser && (isAdmin() || kakaoLinked()) });
+    updateChatAccess = initChatBridge({ getStore: () => store, isAdmin });
 
     // 진행중 표시를 1분마다 갱신
     setInterval(() => {
