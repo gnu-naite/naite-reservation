@@ -9,7 +9,7 @@
    ============================================================ */
 
 import { FIREBASE_CONFIG, COLLECTION_NAME } from './config.js';
-import { validateChat, planChat, hasConflict, unchangedReservation, reservationStart } from './chat-parser.js?v=2';
+import { validateChat, planChat, hasConflict, unchangedReservation, reservationStart } from './chat-parser.js?v=3';
 
 const FIREBASE_VERSION = '12.19.0';
 // 컬렉션별로 따로 저장 (정식: naite_reservations_local 그대로, 베타는 분리)

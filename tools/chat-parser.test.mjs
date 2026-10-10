@@ -142,4 +142,41 @@ for (const [keyword, date] of [['오늘', '2026-10-09'], ['금일', '2026-10-09'
 }
 assert.equal(readChat(message('내일 16~17 합주'), Date.parse('2026-12-31T23:59:00+09:00')).data.date, '2027-01-01');
 assert.equal(readChat(message('내일 16~17 합주'), Date.parse('2026-10-31T23:59:00+09:00')).data.date, '2026-11-01');
+const addedTitle = { ...reservation, id: 'added-title', teamName: '멸종 추가' };
+for (const title of ['멸종 추가', '멸종 합주', '멸종 추가합주', '멸종 추합', '멸종 추가 합주 예약']) {
+    assert.equal(planChat(parse('오늘 멸종 합주 취소'), [{ ...addedTitle, teamName: title }], now).target.id, 'added-title');
+}
+assert.equal(planChat(parse('오늘 멸종 추가 취소'), [{ ...addedTitle, teamName: '멸종' }], now).target.id, 'added-title');
+assert.equal(planChat(parse('10/11 farawayfromthehome 합주 취소'), [englishReservation], now).target.id, 'english');
+assert.ok(planChat(parse('오늘 멸종 합주 취소'), [{ ...addedTitle, teamName: '멸종팀 추가' }], now).reason);
+assert.ok(planChat(parse('오늘 멸종 합주 취소'), [{ ...addedTitle, date: '2026-10-10' }], now).reason);
+assert.ok(planChat(parse('오늘 멸종 합주 취소'), [addedTitle, { ...addedTitle, id: 'base-title', teamName: '멸종' }], now).reason);
+for (const [index, day] of [...'월화수목금토일'].entries()) {
+    const expected = `2026-10-${String(5 + index).padStart(2, '0')}`;
+    for (const word of [day, `${day}요일`, `${day}요일에`, `${day}요일은`, `${day}요일날`, `이번 주 ${day}`, `이번주 ${day}요일`]) {
+        for (const text of [`${word} 16~17 멸종 합주`, `${word} 멸종 합주 취소`]) {
+            assert.equal(parse(text).data.date, expected);
+        }
+    }
+    // 일요일도 다음 주로 넘기지 않고 같은 월~일 주간을 사용합니다.
+    assert.equal(readChat(message(`${day}요일 16~17 합주`), Date.parse('2026-10-11T12:00:00+09:00')).data.date, expected);
+}
+assert.equal(parse('수16~17 멸종 합주').data.date, '2026-10-07');
+assert.equal(parse('멸종 일요일 16~17 합주').data.teamName, '멸종');
+assert.equal(parse('일요일 멸종 합주 취소').data.teamName, '멸종');
+assert.equal(parse('일렉트릭 일 16~17 합주').data.teamName, '일렉트릭');
+assert.equal(parse('토요일밴드 토요일 16~17 합주').data.teamName, '토요일밴드');
+assert.equal(parse('멸종 토요일밴드 10/10 토요일 16~17 합주').data.teamName, '멸종 토요일밴드');
+assert.equal(planChat(parse('일요일 16~17 멸종 합주'), [], now).action, 'create');
+assert.ok(planChat(parse('월요일 16~17 멸종 합주'), [], now).reason);
+assert.equal(readChat(message('금요일 16~17 합주'), Date.parse('2026-12-31T12:00:00+09:00')).data.date, '2027-01-01');
+assert.equal(readChat(message('월요일 16~17 합주'), Date.parse('2027-01-01T12:00:00+09:00')).data.date, '2026-12-28');
+assert.equal(readChat(message('일요일 16~17 합주'), Date.parse('2026-10-31T12:00:00+09:00')).data.date, '2026-11-01');
+for (const text of ['월 화 16~17 멸종 합주', '월요일 수요일 멸종 합주 취소', '다음주 월요일 16~17 합주', '지난 주 일요일 멸종 합주 취소', '매주 금요일 16~17 합주', '2027년 금요일 16~17 합주', '10 / 11 수요일 16~17 합주', '수성 16~17 합주', '일렉트릭 16~17 합주']) {
+    assert.ok(parse(text).reason, text);
+}
+for (const date of ['11월 일요일', '2027년 일요일', '10/ 일요일', '10. 일요일']) {
+    assert.ok(parse(`${date} 16~17 멸종 합주`).reason, date);
+    assert.ok(planChat(parse(`${date} 16시~17시 멸종 합주 취소`), [{ ...reservation, date: '2026-10-11', teamName: '다른팀' }], now).reason, date);
+}
 console.log('채팅 날짜·시간·취소 검증 통과');

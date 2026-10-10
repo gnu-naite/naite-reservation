@@ -25,7 +25,12 @@ export function readChat(message, now = Date.now()) {
     const cancel = CANCEL_WORDS.test(text);
     const action = cancel ? 'cancel' : 'create';
     let rest = text;
-    const dates = [...text.matchAll(/(?<!\d)(?:(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일|(\d{4})-(\d{2})-(\d{2})|(?:(\d{4})년\s*)?(\d{1,2})[/.](\d{1,2})(?:일(?!요일))?|(\d{1,2})일|오늘|금일|내일|모레)(?!\d)/g)];
+    let dates = [...text.matchAll(/(?<!\d)(?:(?:(\d{4})년\s*)?(\d{1,2})월\s*(\d{1,2})일|(\d{4})-(\d{2})-(\d{2})|(?:(\d{4})년\s*)?(\d{1,2})[/.](\d{1,2})(?:일(?!요일))?|(\d{1,2})일|오늘|금일|내일|모레)(?!\d)/g)];
+    const weekdayOnly = !dates.length;
+    if (weekdayOnly) {
+        if (/(?:다음|지난|저번)\s*주|매주|\d+\s*(?:년|월|[/.])/.test(text)) return hold('요일만 적으면 이번 주 기준입니다. 다른 주나 날짜는 날짜를 정확히 적어 주세요.');
+        dates = [...text.matchAll(/(?<![가-힣A-Za-z0-9])(?:이번\s*주\s*)?[월화수목금토일](?:요일)?(?:에|날|은|엔)?(?=\s|\d|$)/g)];
+    }
     if (dates.length !== 1) return hold('예약 날짜가 없거나 여러 개입니다.');
     const d = dates[0];
     if (/\d{4}[./-]\d{1,2}[./-]\d{1,2}/.test(text) && !d[4]) return hold('명시한 연도는 2027년 10월 11일 또는 2027-10-11 형식으로 확인해 주세요.');
@@ -33,15 +38,19 @@ export function readChat(message, now = Date.now()) {
     const today = koreanDate(now);
     const [year, month] = today.split('-').map(Number);
     let date;
-    if (/오늘|금일|내일|모레/.test(d[0])) date = shiftDate(today, /모레/.test(d[0]) ? 2 : /내일/.test(d[0]) ? 1 : 0);
+    if (weekdayOnly) {
+        const day = '월화수목금토일'.indexOf(d[0].replace(/^이번\s*주\s*/, '')[0]);
+        date = shiftDate(today, day - (new Date(today).getUTCDay() + 6) % 7);
+    }
+    else if (/오늘|금일|내일|모레/.test(d[0])) date = shiftDate(today, /모레/.test(d[0]) ? 2 : /내일/.test(d[0]) ? 1 : 0);
     else if (d[4]) date = `${d[4]}-${d[5]}-${d[6]}`;
     else date = `${d[1] || d[7] || year}-${pad(d[2] || d[8] || month)}-${pad(d[3] || d[9] || d[10])}`;
     if (!validDate(date)) return hold('존재하지 않는 날짜입니다.');
-    rest = rest.replace(d[0], ' ');
+    rest = text.slice(0, d.index) + ' ' + text.slice(d.index + d[0].length);
     const weekday = /^\s*\(?([일월화수목금토])(?:요일)?\)?(?=\s|\d|$)/.exec(text.slice(d.index + d[0].length));
     if (weekday) {
         if ('일월화수목금토'[new Date(date).getUTCDay()] !== weekday[1]) return hold('날짜와 요일이 맞지 않습니다.');
-        rest = rest.replace(weekday[0], ' ');
+        rest = text.slice(0, d.index) + ' ' + text.slice(d.index + d[0].length + weekday[0].length);
     }
 
     // 오전·오후가 없으면 24시간제로 읽습니다. 시각을 붙여 쓸 때는 시·분·반 또는 : 표기가 필요합니다.
@@ -102,7 +111,9 @@ export function planChat(result, reservations, now = Date.now()) {
     if (checked.reason) return checked;
     const r = checked.data;
     if (checked.action === 'cancel') {
-        const teamKey = name => typeof name === 'string' ? name.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
+        // 예약 제목 끝의 용도·추가 표시는 팀명 비교에서 빼고, 여러 건이면 취소하지 않습니다.
+        const teamKey = name => typeof name === 'string' ? name.normalize('NFC').trim()
+            .replace(/(?:\s+(?:추가(?:\s*합주)?|추합|합주|예약))+$/, '').replace(/\s+/g, '').toLowerCase() : '';
         const namedCandidates = r.possibleTeamName ? reservations.filter(x => x.date === r.date && teamKey(x.teamName) === teamKey(r.possibleTeamName)) : [];
         if (r.possibleTeamName) {
             if (namedCandidates.length !== 1) return hold('팀명 속 숫자와 시간이 모호합니다. 날짜 뒤에 시간을 쓰거나 시·분을 표시해 주세요.');
