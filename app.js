@@ -992,7 +992,7 @@ function pickDefaultTimes() {
 /* ---------- 모달 ---------- */
 function openCreate(date) {
     // 베타: 예약도 카톡 닉네임을 연동해야 할 수 있습니다 (예약자 이름 대신 닉네임이 기록됨)
-    if (store?.mode === 'cloud' && myProfile === undefined && !isAdmin()) {
+    if (store?.mode === 'cloud' && myProfile === undefined) {
         toast(t('main.loading'));   // 연동 여부를 아직 모름 — 잠시 뒤 다시
         return;
     }
@@ -1081,9 +1081,9 @@ async function handleSubmit(event) {
         closeReservationModal();
         return;
     }
-    // 새 예약의 예약자는 카톡 닉네임(관리자는 '관리자')으로 자동 기록. 수정할 때는 원래 예약자 그대로
+    // 관리자를 포함해 연결된 카톡 닉네임을 우선 기록. 수정할 때는 원래 예약자 그대로
     if (!editing) {
-        const booker = isAdmin() ? '관리자' : myProfile?.kakaoNick?.slice(0, 20);
+        const booker = myProfile?.kakaoNick?.slice(0, 20) || (isAdmin() ? '관리자' : undefined);
         if (booker) base.userName = booker;
     }
 
