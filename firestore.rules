@@ -41,6 +41,11 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in adminUids();
     }
 
+    // 베타 전용 비밀번호 계정 — 정식 예약의 관리자 권한은 없음.
+    function isBetaAdmin() {
+      return signedIn() && request.auth.uid == 'bOm29KxDcwMA3nmUcnvhSAC4Lf13';
+    }
+
     // 기존(작성자 정보 없는) 예약은 관리자만 수정할 수 있습니다.
     function isOwner() {
       return signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
@@ -55,7 +60,7 @@ service cloud.firestore {
 
     // 수정·삭제 권한 — 베타: 관리자·카톡 연동 / 정식: 작성자·관리자
     function canModify(col) {
-      return (isBeta(col) && (isAdmin() || kakaoLinked()))
+      return (isBeta(col) && (isAdmin() || isBetaAdmin() || kakaoLinked()))
         || (!isBeta(col) && (isOwner() || isAdmin()));
     }
 
@@ -97,7 +102,7 @@ service cloud.firestore {
       //       예전 공유 링크 기능의 shareId 는 새로 붙일 수 없음
       allow create: if col in reservationCollections()
         && signedIn()
-        && (!isBeta(col) || isAdmin() || kakaoLinked())
+        && (!isBeta(col) || isAdmin() || isBetaAdmin() || kakaoLinked())
         && isValidFor(col, request.resource.data)
         && request.resource.data.ownerUid == request.auth.uid
         && !('shareId' in request.resource.data)
@@ -117,7 +122,7 @@ service cloud.firestore {
 
     // 기기별 표시 이름 — 본인만 쓰고, 본인과 관리자만 읽음 (닉네임은 기기가 스스로 적는 값)
     match /naite_users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin() || isBetaAdmin());
       allow create, update: if signedIn() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['kakaoNick', 'name', 'updatedAt'])
         && request.resource.data.get('kakaoNick', '') is string
@@ -128,7 +133,7 @@ service cloud.firestore {
 
     // 예약 수정·취소 기록 — 본인 uid 로만 남기고, 서버 시각으로만, 관리자만 읽고 지움. 고칠 수 없음
     match /naite_logs/{id} {
-      allow read, delete: if isAdmin();
+      allow read, delete: if isAdmin() || (isBetaAdmin() && isBeta(resource.data.col));
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['action', 'uid', 'col', 'batch', 'at', 'res'])
         && request.resource.data.uid == request.auth.uid

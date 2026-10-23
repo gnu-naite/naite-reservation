@@ -4,6 +4,10 @@
 export * from '../config.js';
 export const COLLECTION_NAME = "naite_reservations_beta";
 
+// Firebase Authentication에서 만든 베타 전용 계정. 비밀번호는 서버에서만 검증합니다.
+export const BETA_ADMIN_EMAIL = 'admin@beta.naite.invalid';
+export const BETA_ADMIN_UID = 'bOm29KxDcwMA3nmUcnvhSAC4Lf13';
+
 /**
  * 카카오 로그인(카톡 닉네임 연동)용 JavaScript 키 (카카오디벨로퍼스 > naite res > 플랫폼 키).
  * 브라우저에 공개되는 값이며, 콘솔에 등록한 도메인에서만 동작합니다.

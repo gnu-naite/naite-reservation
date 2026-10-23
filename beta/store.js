@@ -8,7 +8,7 @@
      store.write(ops)     추가·수정·삭제를 한 번에 (원자적으로) 저장
    ============================================================ */
 
-import { FIREBASE_CONFIG, COLLECTION_NAME } from './config.js';
+import { FIREBASE_CONFIG, COLLECTION_NAME, BETA_ADMIN_EMAIL, BETA_ADMIN_UID } from './config.js?v=2';
 import { validateChat, planChat, hasConflict, unchangedReservation, reservationStart } from './chat-parser.js?v=4';
 
 const FIREBASE_VERSION = '12.19.0';
@@ -49,7 +49,8 @@ async function createCloudStore(onChange) {
         import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`)
     ]);
 
-    const app = initializeApp(FIREBASE_CONFIG);
+    // 정식 사이트의 관리자 로그인·로그아웃에 영향을 주지 않도록 인증 세션을 분리합니다.
+    const app = initializeApp(FIREBASE_CONFIG, 'naite-beta');
     const db = fs.getFirestore(app);
     const col = fs.collection(db, COLLECTION_NAME);
 
@@ -78,7 +79,7 @@ async function createCloudStore(onChange) {
 
     /* ----- 인증 -----
        부원: 첫 접속 시 익명 계정을 자동 발급 (브라우저에 유지됨)
-       관리자: 구글 로그인. 익명 계정에 구글을 "연결"해서 기존 예약 소유권을 유지합니다. */
+       관리자: 베타 전용 계정의 비밀번호를 Firebase에서 검증합니다. */
     const auth = au.getAuth(app);
     const userListeners = new Set();
     let currentUser = null;
@@ -141,29 +142,16 @@ async function createCloudStore(onChange) {
             if (profile !== undefined) cb(profile);
         },
 
-        /**
-         * 관리자 구글 로그인.
-         * 익명 계정에 구글을 연결해 uid 를 유지하고,
-         * 이미 다른 기기에서 연결된 구글 계정이면 그 계정으로 로그인합니다.
-         */
-        async signInWithGoogle() {
-            const provider = new au.GoogleAuthProvider();
-            provider.setCustomParameters({ prompt: 'select_account' });
-
-            if (auth.currentUser?.isAnonymous) {
-                try {
-                    await au.linkWithPopup(auth.currentUser, provider);
-                    await auth.currentUser.reload();
-                    userListeners.forEach(fn => fn(auth.currentUser, null));
-                    return auth.currentUser;
-                } catch (err) {
-                    if (err.code !== 'auth/credential-already-in-use') throw err;
-                    const cred = au.GoogleAuthProvider.credentialFromError(err);
-                    const res = await au.signInWithCredential(auth, cred);
-                    return res.user;
-                }
+        /** 계정 식별자는 고정하고 비밀번호만 입력받습니다. 가입이나 계정 연결은 하지 않습니다. */
+        async signInWithPassword(password) {
+            if (!BETA_ADMIN_UID || !BETA_ADMIN_EMAIL) throw new Error('auth/admin-not-configured');
+            if (typeof password !== 'string' || !password) throw new Error('auth/missing-password');
+            await firstUser;
+            const res = await au.signInWithEmailAndPassword(auth, BETA_ADMIN_EMAIL, password);
+            if (res.user.uid !== BETA_ADMIN_UID) {
+                await au.signOut(auth);
+                throw new Error('auth/admin-not-configured');
             }
-            const res = await au.signInWithPopup(auth, provider);
             return res.user;
         },
 
@@ -327,7 +315,7 @@ function createLocalStore(onChange) {
             cb(null, null);
         },
         onProfile() {},
-        async signInWithGoogle() {
+        async signInWithPassword() {
             throw new Error('local-mode');
         },
         async signOut() {},

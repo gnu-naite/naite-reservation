@@ -30,30 +30,49 @@ async function setup(collectionName = 'naite_reservations_beta') {
         }
     };
     const auth = { currentUser: { uid: 'operator' } };
-    const au = { getAuth: () => auth, onAuthStateChanged: (auth, fn) => fn(auth.currentUser) };
+    let authChanged;
+    const au = { getAuth: () => auth, onAuthStateChanged: (auth, fn) => { authChanged = fn; fn(auth.currentUser); },
+        signInWithEmailAndPassword: async (givenAuth, email, password) => {
+            assert.equal(givenAuth, auth);
+            assert.equal(email, 'admin@beta.naite.invalid');
+            if (password === 'wrong') throw Object.assign(new Error('wrong'), { code: 'auth/invalid-credential' });
+            auth.currentUser = { uid: password === 'unexpected-account' ? 'other' : 'beta-admin', isAnonymous: false };
+            authChanged(auth.currentUser);
+            return { user: auth.currentUser };
+        },
+        signOut: async () => { auth.currentUser = { uid: 'operator', isAnonymous: true }; authChanged(auth.currentUser); }
+    };
     const synthetic = value => new vm.SyntheticModule(Object.keys(value), function () { for (const [k, v] of Object.entries(value)) this.setExport(k, v); }, { context });
-    const config = synthetic({ FIREBASE_CONFIG: { apiKey: 'configured', authDomain: 'configured', projectId: 'configured', appId: 'configured' }, COLLECTION_NAME: collectionName });
+    const config = synthetic({ FIREBASE_CONFIG: { apiKey: 'configured', authDomain: 'configured', projectId: 'configured', appId: 'configured' }, COLLECTION_NAME: collectionName, BETA_ADMIN_EMAIL: 'admin@beta.naite.invalid', BETA_ADMIN_UID: 'beta-admin' });
     const modules = new Map();
     async function load(path) {
         if (modules.has(path)) return modules.get(path);
         const module = new vm.SourceTextModule(await readFile(path, 'utf8'), { context, identifier: path,
             importModuleDynamically: async specifier => {
-                const value = synthetic(specifier.includes('firestore') ? fs : specifier.includes('firebase-auth') ? au : { initializeApp: () => ({}) });
+                const value = synthetic(specifier.includes('firestore') ? fs : specifier.includes('firebase-auth') ? au : { initializeApp: (config, name) => { assert.equal(name, 'naite-beta'); return {}; } });
                 await value.link(() => {}); await value.evaluate(); return value;
             }
         });
         modules.set(path, module);
-        await module.link((specifier, parent) => specifier === './config.js' ? config : load(resolve(dirname(parent.identifier), specifier.split('?')[0])));
+        await module.link((specifier, parent) => specifier.split('?')[0] === './config.js' ? config : load(resolve(dirname(parent.identifier), specifier.split('?')[0])));
         return module;
     }
     const module = await load(resolve('beta/store.js'));
     await module.evaluate();
     const store = await module.namespace.createStore(() => {});
     assert.equal(store.mode, 'cloud');
-    return { store, rows };
+    return { store, rows, auth };
 }
 
-const { store, rows } = await setup();
+const { store, rows, auth } = await setup();
+await assert.rejects(store.signInWithPassword(''), /missing-password/);
+await assert.rejects(store.signInWithPassword('wrong'), { code: 'auth/invalid-credential' });
+assert.equal(auth.currentUser.uid, 'operator');
+assert.equal((await store.signInWithPassword('correct')).uid, 'beta-admin');
+await store.signOut();
+assert.equal(auth.currentUser.uid, 'operator');
+await assert.rejects(store.signInWithPassword('unexpected-account'), /admin-not-configured/);
+assert.equal(auth.currentUser.uid, 'operator');
 const id = 'a'.repeat(64);
 const plan = { action: 'create', data: { date: koreanDate(Date.now() + 86_400_000), startTime: '16:00', endTime: '17:00', isNextDay: false, teamName: '하이라이트', userName: '김동하', purpose: '합주', ownerUid: 'injected', seriesId: 'injected' } };
 assert.equal(await store.applyChat(id, plan), '예약 추가');
@@ -78,17 +97,17 @@ assert.equal(log.batch.length, 32);
 assert.equal(await store.applyChat('c'.repeat(64), { action: 'cancel', target }), '이미 취소됨');
 assert.equal(rows.size, 1);
 await assert.rejects(store.applyChat('../bad', plan), /식별자/);
-const englishResult = readChat({ text: '10/11 11~12 far away from the home 합주', sender: '김동하', sentDate: '2026-10-09', complete: true }, Date.parse('2026-10-09T12:00:00+09:00'));
+const future = koreanDate(Date.now() + 86_400_000);
+const englishResult = readChat({ text: `${future} 11~12 far away from the home 합주`, sender: '김동하', complete: true });
 const englishId = 'd'.repeat(64);
 const englishPlan = await store.planChat(englishResult);
 assert.equal(await store.applyChat(englishId, englishPlan), '예약 추가');
 assert.equal(rows.get(`naite_reservations_beta/kakao_${englishId}`).teamName, 'far away from the home');
-const englishCancel = readChat({ text: '10/11 FAR_AWAY-from.the(home) 합주 취소', complete: true }, Date.parse('2026-10-09T12:00:00+09:00'));
+const englishCancel = readChat({ text: `${future} FAR_AWAY-from.the(home) 합주 취소`, complete: true });
 const englishCancelPlan = await store.planChat(englishCancel);
 assert.equal(englishCancelPlan.target.id, `kakao_${englishId}`);
 assert.equal(await store.applyChat('e'.repeat(64), englishCancelPlan), '예약 취소');
 assert.equal(rows.has(`naite_reservations_beta/kakao_${englishId}`), false);
-const future = koreanDate(Date.now() + 86_400_000);
 const parse = text => readChat({ text, sender: '김동하', complete: true });
 const otherPlan = await store.planChat(parse(`${future} 7 8`));
 assert.equal(otherPlan.data.startTime, '07:00');
@@ -121,4 +140,4 @@ assert.equal(rows.has(titlePath), false);
 assert.equal(rows.has(`naite_reservations_beta/kakao_${otherId}`), true);
 const main = await setup('naite_reservations');
 await assert.rejects(main.store.applyChat(id, plan), /베타/);
-console.log('실제 store의 추가·중복·충돌·취소 재시도·정식 쓰기 차단 검증 통과');
+console.log('베타 비밀번호 인증·세션 분리·실제 store 추가·중복·취소·정식 쓰기 차단 검증 통과');

@@ -265,6 +265,26 @@
         </div>
     </div>
 
+    <!-- ===== 관리자 로그인 ===== -->
+    <div id="adminLoginModal" class="overlay hidden">
+        <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="adminLoginTitle">
+            <div class="modal-head">
+                <h2 id="adminLoginTitle" data-i18n="admin.loginTitle">관리자 로그인</h2>
+            </div>
+            <form id="adminLoginForm" class="modal-body">
+                <div class="field">
+                    <label for="adminPassword" data-i18n="admin.password">관리자 비밀번호</label>
+                    <input id="adminPassword" type="password" autocomplete="current-password" required aria-describedby="adminLoginError">
+                </div>
+                <p id="adminLoginError" role="alert"></p>
+                <div class="modal-actions">
+                    <button type="button" id="adminCancelBtn" class="secondary-btn" data-i18n="modal.btnCancel">취소</button>
+                    <button type="submit" id="adminSubmitBtn" class="primary-btn" data-i18n="admin.loginYes">로그인</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- ===== 확인 다이얼로그 ===== -->
     <div id="confirmModal" class="overlay hidden">
         <div class="modal modal-sm" role="dialog" aria-modal="true">
@@ -315,7 +335,7 @@
 
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=32"></script>
+    <script type="module" src="app.js?v=33"></script>
 </body>
 
 </html>

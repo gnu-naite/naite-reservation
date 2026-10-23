@@ -26,19 +26,24 @@
 
 ## 베타 현황
 
-- `beta/config.js` 는 루트 설정을 재수출하고 **예약 컬렉션만 `naite_reservations_beta`(테스트 전용)** 로 바꿉니다.
+- **베타 관리자**: Firebase 이메일/비밀번호 계정(`beta/config.js`의 `BETA_ADMIN_EMAIL`·`BETA_ADMIN_UID`).
+  화면에서는 비밀번호만 입력하며 Firebase가 검증합니다. 비밀번호는 소스에 저장하지 않습니다.
+  `firestore.rules`의 `isBetaAdmin()`은 베타 예약·베타 로그·닉네임 조회만 허용하고 정식 관리자 권한은 주지 않습니다.
+  정식과 인증 상태를 분리하려고 Firebase 앱 이름 `naite-beta`를 씁니다. 전환 후 기존 베타 이용자는 카톡 닉네임을 한 번 다시 연결합니다.
+  카톡 채팅 OCR 패널·자동 처리는 중지했고 닉네임 연동과 수정·취소 기록은 유지합니다.
+- `beta/config.js` 는 루트 설정을 재수출하고 예약 컬렉션을 `naite_reservations_beta`(테스트 전용)로 바꾸며 베타 관리자 계정을 지정합니다.
   베타에서 한 예약·수정·취소는 정식 예약표에 영향이 없습니다. (주소는 GitHub Pages `/beta/` 그대로)
 - 정식 예약을 베타로 복사: 작성자(`ownerUid`)를 그대로 둔 채 만들려면 규칙에 "베타 컬렉션에 한해 관리자 허용" 예외가 필요합니다.
   **2026-09-28 복사를 마친 뒤 그 예외는 게시된 규칙에서 뺐습니다** (저장소 firestore.rules 도 예외 없음 = 게시본과 동일).
   다시 복사하려면 콘솔에서 create 규칙의 작성자 조건을
-  `(request.resource.data.get('ownerUid', '') == request.auth.uid || (col == 'naite_reservations_beta' && isAdmin()))` 로 잠시 바꿔 게시 → 아래 실행 → 원래대로 게시.
+  `(request.resource.data.get('ownerUid', '') == request.auth.uid || (col == 'naite_reservations_beta' && (isAdmin() || isBetaAdmin())))` 로 잠시 바꿔 게시 → 아래 실행 → 원래대로 게시.
   관리자로 로그인한 브라우저에서 베타 페이지를 열고, 정식 문서를 같은 id 로 베타에 `set` (베타에 이미 있는 id 는 건너뜀, `shareId` 는 빼고 복사).
   원래 작성 기기에서는 베타 복사본도 수정할 수 있습니다.
   - 2026-09-28 정식 208건 + 이후 추가된 8건(총 216건 전부)을 베타로 복사함 (정식은 읽기만, 변경 없음). 다시 맞출 때는 관리자 세션의 베타 페이지 콘솔에서:
     ```js
     const { getApp } = await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js');
     const fs = await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js');
-    const db = fs.getFirestore(getApp());
+    const db = fs.getFirestore(getApp('naite-beta'));
     const have = new Set((await fs.getDocs(fs.collection(db, 'naite_reservations_beta'))).docs.map(d => d.id));
     for (const d of (await fs.getDocs(fs.collection(db, 'naite_reservations'))).docs) {
         if (have.has(d.id)) continue;

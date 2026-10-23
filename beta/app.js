@@ -2,8 +2,8 @@
    나이테 동아리방 예약 — 메인 로직
    ============================================================ */
 
-import { createStore, randomToken } from './store.js?v=10';
-import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, KAKAO_JS_KEY } from './config.js';
+import { createStore, randomToken } from './store.js?v=11';
+import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, BETA_ADMIN_UID, KAKAO_JS_KEY } from './config.js?v=2';
 
 /* ---------- i18n 사전 ---------- */
 const I18N = {
@@ -138,15 +138,16 @@ const I18N = {
         "admin.copy": "UID 복사",
         "admin.copied": "UID를 복사했습니다.",
         "admin.loginTitle": "관리자 로그인",
-        "admin.loginConfirm": "관리자 전용 기능입니다.\n구글 계정으로 로그인하면 관리자로 등록된 계정만 모든 예약을 수정·삭제할 수 있습니다.",
-        "admin.loginYes": "구글로 로그인",
+        "admin.password": "관리자 비밀번호",
+        "admin.loginYes": "로그인",
+        "admin.wrongPassword": "비밀번호가 올바르지 않습니다.",
+        "admin.tooMany": "로그인 시도가 많습니다. 잠시 후 다시 시도해주세요.",
+        "admin.network": "연결을 확인한 뒤 다시 시도해주세요.",
+        "admin.notConfigured": "관리자 계정 설정이 완료되지 않았습니다.",
         "admin.signedIn": "관리자로 로그인되어 있습니다. 모든 예약을 수정·삭제할 수 있습니다.",
         "admin.notRegistered": "{email} 계정은 아직 관리자로 등록되지 않았습니다. 아래 UID를 등록해주세요.",
         "admin.loggedOut": "로그아웃했습니다.",
-        "admin.popupBlocked": "로그인 팝업이 차단되었습니다. 팝업을 허용하거나 Chrome·Safari에서 열어주세요.",
-        "admin.inApp": "카카오톡 등 앱 내 브라우저에서는 구글 로그인이 막혀 있습니다. Chrome·Safari에서 열어주세요.",
-        "admin.domain": "이 주소가 Firebase에 승인되지 않았습니다. (Authentication > 설정 > 승인된 도메인)",
-        "admin.notEnabled": "Firebase에서 로그인 기능이 아직 켜져 있지 않습니다. (Authentication > 로그인 방법에서 익명·Google 사용 설정)",
+        "admin.notEnabled": "관리자 비밀번호 로그인이 아직 활성화되지 않았습니다.",
         "admin.loginFail": "로그인에 실패했습니다. ({code})",
         "err.save": "예약 저장에 실패했습니다. 네트워크 연결을 확인해주세요.",
         "err.delete": "예약 취소에 실패했습니다. 네트워크 연결을 확인해주세요.",
@@ -286,15 +287,16 @@ const I18N = {
         "admin.copy": "Copy UID",
         "admin.copied": "UID copied.",
         "admin.loginTitle": "Admin sign-in",
-        "admin.loginConfirm": "This is for admins only.\nOnly Google accounts registered as admins can edit or delete every booking.",
-        "admin.loginYes": "Sign in with Google",
+        "admin.password": "Admin password",
+        "admin.loginYes": "Sign in",
+        "admin.wrongPassword": "Incorrect password.",
+        "admin.tooMany": "Too many attempts. Please try again later.",
+        "admin.network": "Check your connection and try again.",
+        "admin.notConfigured": "The admin account has not been configured.",
         "admin.signedIn": "Signed in as admin. You can edit and delete every booking.",
         "admin.notRegistered": "{email} is not registered as an admin yet. Register the UID below.",
         "admin.loggedOut": "Signed out.",
-        "admin.popupBlocked": "The sign-in popup was blocked. Allow popups or open in Chrome/Safari.",
-        "admin.inApp": "Google sign-in is blocked in in-app browsers (e.g. KakaoTalk). Open in Chrome/Safari.",
-        "admin.domain": "This domain is not authorized in Firebase. (Authentication > Settings > Authorized domains)",
-        "admin.notEnabled": "Sign-in is not enabled in Firebase yet. (Authentication > Sign-in method: enable Anonymous and Google)",
+        "admin.notEnabled": "Admin password sign-in has not been enabled yet.",
         "admin.loginFail": "Sign-in failed. ({code})",
         "err.save": "Failed to save. Please check your connection.",
         "err.delete": "Failed to cancel. Please check your connection.",
@@ -307,7 +309,7 @@ const I18N = {
 
 const LS_LANG = 'naite_lang';
 const LS_THEME = 'naite_theme';
-const LS_KAKAO_ASKED = 'naite_kakao_asked';   // 첫 방문 카톡 연동 안내를 이미 띄웠는지
+const LS_KAKAO_ASKED = 'naite_beta_kakao_asked';   // 베타 인증 세션에서 카톡 연동 안내를 이미 띄웠는지
 const LS_KAKAO_STATE = 'naite_kakao_state';
 const THEMES = ['default', 'forest', 'ocean', 'sunset', 'mono', 'dark'];
 
@@ -319,7 +321,7 @@ let reservations = [];            // 전체 예약 목록
 let editingId = null;             // 수정 중인 예약 id
 let resType = 'once';             // 'once' 한 번만 | 'weekly' 고정(매주)
 let store = null;
-let currentUser = null;           // Firebase 사용자 (익명 또는 구글)
+let currentUser = null;           // Firebase 사용자 (익명 또는 비밀번호)
 let authUnavailable = false;      // 인증을 쓸 수 없는 상태 (콘솔에서 미설정 등)
 let myProfile;                    // 이 기기의 { kakaoNick, name } (undefined: 아직 모름, null: 없음)
 let users = new Map();            // 관리자용: uid → { kakaoNick, name }
@@ -329,9 +331,9 @@ let unwatchUsers = null;
 let resolveUserReady;
 const userReady = new Promise(r => (resolveUserReady = r));   // 익명 로그인까지 끝났을 때
 
-/** 관리자 여부 — 구글 로그인 + ADMIN_UIDS 에 등록된 계정 */
+/** 관리자 여부 — 서버 규칙과 동일한 베타 전용 계정 */
 function isAdmin() {
-    return !!currentUser && !currentUser.isAnonymous && ADMIN_UIDS.includes(currentUser.uid);
+    return !!currentUser && !currentUser.isAnonymous && currentUser.uid === BETA_ADMIN_UID;
 }
 
 /**
@@ -425,6 +427,12 @@ const el = {
 
     adminBadge: $('adminBadge'),
     adminLoginBtn: $('adminLoginBtn'),
+    adminLoginModal: $('adminLoginModal'),
+    adminLoginForm: $('adminLoginForm'),
+    adminPassword: $('adminPassword'),
+    adminLoginError: $('adminLoginError'),
+    adminSubmitBtn: $('adminSubmitBtn'),
+    adminCancelBtn: $('adminCancelBtn'),
     adminInfo: $('adminInfo'),
     adminInfoText: $('adminInfoText'),
     adminUidRow: $('adminUidRow'),
@@ -796,7 +804,7 @@ function renderMine() {
 }
 
 function userLabel(uid) {
-    if (ADMIN_UIDS.includes(uid)) return t('log.admin');   // 관리자는 카톡 연동과 상관없이 '관리자'
+    if (uid === BETA_ADMIN_UID || ADMIN_UIDS.includes(uid)) return t('log.admin');
     const u = users.get(uid);
     return [u?.kakaoNick, u?.name].filter(Boolean).join(' / ') || (uid ? uid.slice(0, 6) : '?');
 }
@@ -1422,10 +1430,10 @@ async function handleKakaoReturn() {
 function updateAdminUI() {
     // 익명 로그인이 실패해도 관리자 버튼은 보여줍니다. (누르면 원인을 안내)
     const cloud = store && store.mode === 'cloud';
-    const google = cloud && currentUser && !currentUser.isAnonymous;
+    const signedIn = cloud && currentUser && !currentUser.isAnonymous;
 
-    el.adminLoginBtn.classList.toggle('hidden', !cloud || google);
-    el.adminInfo.classList.toggle('hidden', !google);
+    el.adminLoginBtn.classList.toggle('hidden', !cloud || signedIn);
+    el.adminInfo.classList.toggle('hidden', !signedIn);
     el.adminBadge.classList.toggle('hidden', !isAdmin());
     updateKakaoBtn();
 
@@ -1449,7 +1457,7 @@ function updateAdminUI() {
     }
     renderLogs();
 
-    if (!google) return;
+    if (!signedIn) return;
 
     if (isAdmin()) {
         el.adminInfoText.textContent = t('admin.signedIn');
@@ -1461,34 +1469,51 @@ function updateAdminUI() {
     }
 }
 
-async function handleAdminLogin() {
-    const ok = await askConfirm(t('admin.loginConfirm'), {
-        title: t('admin.loginTitle'),
-        yes: t('admin.loginYes'),
-        no: t('modal.btnCancel')
-    });
-    if (!ok) return;
+function handleAdminLogin() {
+    el.adminLoginForm.reset();
+    el.adminLoginError.textContent = '';
+    openOverlay(el.adminLoginModal);
+    el.adminPassword.focus();
+}
 
-    // 카카오톡 등 앱 내 브라우저는 구글이 로그인을 차단합니다.
-    if (/KAKAOTALK|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent)) {
-        toast(t('admin.inApp'), 'error');
-        return;
-    }
+function closeAdminLogin() {
+    if (el.adminSubmitBtn.disabled) return;
+    el.adminLoginForm.reset();
+    closeOverlay(el.adminLoginModal);
+    (isAdmin() ? el.adminLogoutBtn : el.adminLoginBtn).focus();
+}
 
+async function submitAdminLogin(event) {
+    event.preventDefault();
+    if (el.adminSubmitBtn.disabled) return;
+    el.adminSubmitBtn.disabled = el.adminCancelBtn.disabled = true;
+    el.adminLoginForm.setAttribute('aria-busy', 'true');
+    el.adminLoginError.textContent = '';
+    let success = false;
     try {
-        await store.signInWithGoogle();
+        await store.signInWithPassword(el.adminPassword.value);
+        success = true;
     } catch (err) {
-        console.error('[admin] 로그인 실패:', err);
         const code = err?.code || err?.message || 'unknown';
-        if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
         const key = {
-            'auth/popup-blocked': 'admin.popupBlocked',
-            'auth/unauthorized-domain': 'admin.domain',
+            'auth/invalid-credential': 'admin.wrongPassword',
+            'auth/wrong-password': 'admin.wrongPassword',
+            'auth/missing-password': 'admin.wrongPassword',
+            'auth/too-many-requests': 'admin.tooMany',
+            'auth/network-request-failed': 'admin.network',
+            'auth/admin-not-configured': 'admin.notConfigured',
+            'auth/user-not-found': 'admin.notConfigured',
             'auth/operation-not-allowed': 'admin.notEnabled',
             'auth/configuration-not-found': 'admin.notEnabled'
         }[code];
-        toast(key ? t(key) : t('admin.loginFail', { code }), 'error');
+        el.adminLoginError.textContent = key ? t(key) : t('admin.loginFail', { code });
+    } finally {
+        el.adminPassword.value = '';
+        el.adminSubmitBtn.disabled = el.adminCancelBtn.disabled = false;
+        el.adminLoginForm.removeAttribute('aria-busy');
     }
+    if (success) closeAdminLogin();
+    else el.adminPassword.focus();
 }
 
 /** 기록의 날짜 'YYYY-MM-DD' (기기 시간대 기준) */
@@ -1658,6 +1683,20 @@ function bindEvents() {
     });
 
     el.adminLoginBtn.addEventListener('click', handleAdminLogin);
+    el.adminLoginForm.addEventListener('submit', submitAdminLogin);
+    el.adminCancelBtn.addEventListener('click', closeAdminLogin);
+    el.adminLoginModal.addEventListener('click', e => {
+        if (e.target === el.adminLoginModal) closeAdminLogin();
+    });
+    el.adminLoginModal.addEventListener('keydown', e => {
+        if (e.key !== 'Tab') return;
+        const last = el.adminSubmitBtn.disabled ? el.adminPassword : el.adminSubmitBtn;
+        if (e.shiftKey && document.activeElement === el.adminPassword) {
+            e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault(); el.adminPassword.focus();
+        }
+    });
     el.adminLogoutBtn.addEventListener('click', handleAdminLogout);
     el.copyUidBtn.addEventListener('click', copyUid);
 
@@ -1679,7 +1718,8 @@ function bindEvents() {
 
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
+        if (!el.adminLoginModal.classList.contains('hidden')) closeAdminLogin();
+        else if (!el.seriesModal.classList.contains('hidden')) closeOverlay(el.seriesModal);
         else if (!el.resModal.classList.contains('hidden')) closeReservationModal();
         else if (!el.themeModal.classList.contains('hidden')) closeOverlay(el.themeModal);
     });
@@ -1704,7 +1744,7 @@ async function init() {
 
     el.banner.classList.toggle('hidden', store.mode !== 'local');
 
-    // 로그인 상태(익명/구글)가 바뀌면 권한 표시를 다시 그립니다.
+    // 로그인 상태(익명/비밀번호)가 바뀌면 권한 표시를 다시 그립니다.
     store.onUser((user, err) => {
         currentUser = user;
         authUnavailable = !!err && !user;
