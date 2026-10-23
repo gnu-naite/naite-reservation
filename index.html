@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=17">
 </head>
 
 <body>
@@ -19,6 +19,7 @@
         <i class="fa-solid fa-triangle-exclamation"></i>
         <span data-i18n="banner.local">임시 저장 모드입니다. 예약이 이 기기에만 저장되고 다른 사람과 공유되지 않습니다. (config.js 설정 필요)</span>
     </div>
+
 
     <div class="app">
         <!-- ===== 헤더 ===== -->
@@ -51,6 +52,8 @@
             <section class="card upcoming">
                 <div class="card-head">
                     <h2><i class="fa-regular fa-clock"></i><span data-i18n="main.upcomingTitle">오늘 일정</span></h2>
+                    <!-- 수정할 수 있는 앞으로의 예약이 있을 때만 — 누르면 가장 가까운 날짜로 이동 -->
+                    <button type="button" id="mineChip" class="chip-btn hidden"></button>
                 </div>
                 <div id="upcomingList" class="upcoming-list">
                     <div class="placeholder" data-i18n="main.loading">불러오는 중...</div>
@@ -85,7 +88,12 @@
                 <section class="card schedule">
                     <div class="card-head">
                         <h2 id="selectedDateTitle">9월 21일 (월)</h2>
-                        <span id="dayCountBadge" class="badge">0</span>
+                        <span class="head-actions">
+                            <span id="dayCountBadge" class="badge">0</span>
+                            <button type="button" id="dayReserveBtn" class="chip-btn">
+                                <i class="fa-solid fa-plus"></i> <span data-i18n="main.bookDay">이 날 예약</span>
+                            </button>
+                        </span>
                     </div>
 
                     <!-- 24시간 점유 바 -->
@@ -99,6 +107,23 @@
                     <div id="reservationsList" class="reservations-list"></div>
                 </section>
             </div>
+
+            <!-- ===== 관리자에게만: 누가 언제 무엇을 수정·취소했는지 ===== -->
+            <section id="logCard" class="card log-card hidden">
+                <div class="card-head">
+                    <h2><i class="fa-solid fa-clock-rotate-left"></i><span data-i18n="log.title">최근 수정·취소</span></h2>
+                    <!-- 하루씩 한 장 — 날짜를 고르거나 ◀ ▶ 로 하루씩 -->
+                    <div class="log-nav">
+                        <button type="button" id="logPrev" class="icon-btn ghost" aria-label="이전 날"><i class="fa-solid fa-chevron-left"></i></button>
+                        <input type="date" id="logDate" class="log-date" aria-label="기록 날짜">
+                        <button type="button" id="logNext" class="icon-btn ghost" aria-label="다음 날"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                <ul id="logList" class="log-list"></ul>
+                <button type="button" id="logClearBtn" class="danger-btn log-clear">
+                    <i class="fa-regular fa-trash-can"></i> <span data-i18n="log.clear">이 날 기록 삭제</span>
+                </button>
+            </section>
         </main>
 
         <footer class="app-footer">
@@ -107,6 +132,13 @@
 
             <!-- 관리자 영역 -->
             <div class="admin-area">
+                <!-- 카톡 안에서 자동 연결을 거절했거나 실패했을 때 다시 연결 -->
+                <button type="button" id="kakaoLinkBtn" class="link-btn hidden">
+                    <i class="fa-solid fa-comment"></i><span data-i18n="kakao.connect">카톡 닉네임 연결</span>
+                </button>
+                <button type="button" id="kakaoUnlinkBtn" class="link-btn hidden">
+                    <i class="fa-solid fa-link-slash"></i><span data-i18n="kakao.unlink">카톡 연동 해제</span>
+                </button>
                 <button type="button" id="adminLoginBtn" class="link-btn hidden">
                     <i class="fa-solid fa-user-shield"></i><span data-i18n="admin.login">관리자 로그인</span>
                 </button>
@@ -116,8 +148,7 @@
                         <code id="adminUid"></code>
                         <button type="button" id="copyUidBtn" class="chip-btn" data-i18n="admin.copy">UID 복사</button>
                     </div>
-                    <button type="button" id="adminLogoutBtn" class="link-btn" data-i18n="admin.logout">로그아웃</button>
-                </div>
+                    <button type="button" id="adminLogoutBtn" class="link-btn" data-i18n="admin.logout">로그아웃</button>                </div>
             </div>
         </footer>
     </div>
@@ -177,18 +208,7 @@
                 <div class="field-row">
                     <div class="field">
                         <label for="teamName" data-i18n="modal.labelTeam">팀명</label>
-                        <input type="text" id="teamName" data-i18n-placeholder="modal.phTeam" placeholder="예: 밴드팀" maxlength="30" required>
-                    </div>
-                    <div class="field">
-                        <label for="userName" data-i18n="modal.labelName">예약자 이름</label>
-                        <input type="text" id="userName" data-i18n-placeholder="modal.phName" placeholder="홍길동" maxlength="20" required>
-                    </div>
-                </div>
-
-                <div class="field-row">
-                    <div class="field">
-                        <label for="peopleCount" data-i18n="modal.labelCount">사용 인원수</label>
-                        <input type="number" id="peopleCount" min="1" max="50" data-i18n-placeholder="modal.phCount" placeholder="예: 5" required>
+                        <input type="text" id="teamName" data-i18n-placeholder="modal.phTeam" placeholder="예: 밴드팀" maxlength="30" autocomplete="off" required>
                     </div>
                     <div class="field">
                         <label for="purpose" data-i18n="modal.labelPurpose">사용 목적</label>
@@ -236,6 +256,26 @@
                     <span class="swatch swatch-dark"></span><span data-i18n="theme.dark">다크</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- ===== 관리자 로그인 ===== -->
+    <div id="adminLoginModal" class="overlay hidden">
+        <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="adminLoginTitle">
+            <div class="modal-head">
+                <h2 id="adminLoginTitle" data-i18n="admin.loginTitle">관리자 로그인</h2>
+            </div>
+            <form id="adminLoginForm" class="modal-body">
+                <div class="field">
+                    <label for="adminPassword" data-i18n="admin.password">관리자 비밀번호</label>
+                    <input id="adminPassword" type="password" autocomplete="current-password" required aria-describedby="adminLoginError">
+                </div>
+                <p id="adminLoginError" role="alert"></p>
+                <div class="modal-actions">
+                    <button type="button" id="adminCancelBtn" class="secondary-btn" data-i18n="modal.btnCancel">취소</button>
+                    <button type="submit" id="adminSubmitBtn" class="primary-btn" data-i18n="admin.loginYes">로그인</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -289,7 +329,7 @@
 
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=5"></script>
+    <script type="module" src="app.js?v=34"></script>
 </body>
 
 </html>

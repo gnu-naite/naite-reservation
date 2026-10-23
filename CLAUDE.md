@@ -14,43 +14,23 @@
 ## 권한 모델
 
 - 보기: 누구나
-- **정식**: 예약은 로그인(익명 포함)한 누구나, 수정·삭제는 작성 기기(`ownerUid`) · 관리자(`ADMIN_UIDS`, 구글 로그인)
-  (예전 베타의 공유 링크 기능은 코드·규칙에서 모두 제거. 예전 예약에 남은 `shareId` 는 바꿀 수 없는 값으로만 남음)
-- **베타**: 예약·수정·삭제 모두 **관리자 또는 카톡 닉네임을 연동한 기기**(`naite_users/{uid}.kakaoNick`)면 누구나.
-  작성자·팀·링크 구분 없음. 예약자 이름·인원수 칸 없음 — 새 예약의 `userName` 은 카톡 닉네임(관리자는 '관리자').
-  **한계: 서버가 없어 `kakaoNick` 은 기기가 스스로 쓰는 값이라, 개발자 도구로 아무 닉네임이나 써 넣으면 카카오 로그인 없이
-  베타 수정 권한을 얻을 수 있습니다.** 막으려면 서버(Cloud Functions)에서 카카오 토큰을 검증해 기록하거나 Firebase OIDC(카카오) 필요.
-- 보안 규칙: [firestore.rules](firestore.rules). **정식·베타 공용**이라 게시하는 순간 정식에도 적용됩니다.
-  저장소 파일은 기록용이고, 실제 반영은 Firebase 콘솔 > Firestore > 규칙에 붙여넣고 [게시] (사용자가 직접).
-  `naite_reservations_test` 는 규칙 테스트 전용(정식과 같은 규칙).
+- **정식·베타**: 보기만 할 때는 로그인 불필요. 예약·수정·삭제는 **관리자 또는 카톡 닉네임을 연동한 기기**만 가능하며 작성자 구분 없이 모든 예약을 관리합니다.
+  새 예약은 예약자 이름·인원수 입력 없이 카톡 닉네임(관리자는 '관리자')을 기록합니다. 기존 예약자·인원수·반복 정보는 유지합니다.
+- **관리자**: Firebase 이메일/비밀번호 계정. 정식은 config.js의 PASSWORD_ADMIN_EMAIL·PASSWORD_ADMIN_UID,
+  베타는 beta/config.js의 BETA_ADMIN_EMAIL·BETA_ADMIN_UID로 같은 계정을 사용합니다. 비밀번호는 소스에 저장하지 않습니다.
+  기존 ADMIN_UIDS는 과거 관리자 세션·기록 표시를 유지합니다.
+- **한계**: kakaoNick은 기기가 스스로 쓰므로 카카오 계정 소유를 서버에서 검증하지 않습니다.
+  위조 방지가 필요하면 서버에서 카카오 토큰을 검증해야 합니다. 수정·취소 기록도 앱이 남기는 것이며 규칙으로 강제하지 않습니다.
+- 보안 규칙: [firestore.rules](firestore.rules). 정식·베타·테스트 컬렉션은 동일한 권한 및 입력 검사를 적용합니다.
+  실제 반영은 Firebase 콘솔 > Firestore > 규칙에서 게시합니다.
 
-## 베타 현황
+## 정식·베타 현황
 
-- **베타 관리자**: Firebase 이메일/비밀번호 계정(`beta/config.js`의 `BETA_ADMIN_EMAIL`·`BETA_ADMIN_UID`).
-  화면에서는 비밀번호만 입력하며 Firebase가 검증합니다. 비밀번호는 소스에 저장하지 않습니다.
-  `firestore.rules`의 `isBetaAdmin()`은 베타 예약·베타 로그·닉네임 조회만 허용하고 정식 관리자 권한은 주지 않습니다.
-  정식과 인증 상태를 분리하려고 Firebase 앱 이름 `naite-beta`를 씁니다. 전환 후 기존 베타 이용자는 카톡 닉네임을 한 번 다시 연결합니다.
-  카톡 채팅 OCR 패널·자동 처리는 중지했고 닉네임 연동과 수정·취소 기록은 유지합니다.
-- `beta/config.js` 는 루트 설정을 재수출하고 예약 컬렉션을 `naite_reservations_beta`(테스트 전용)로 바꾸며 베타 관리자 계정을 지정합니다.
-  베타에서 한 예약·수정·취소는 정식 예약표에 영향이 없습니다. (주소는 GitHub Pages `/beta/` 그대로)
-- 정식 예약을 베타로 복사: 작성자(`ownerUid`)를 그대로 둔 채 만들려면 규칙에 "베타 컬렉션에 한해 관리자 허용" 예외가 필요합니다.
-  **2026-09-28 복사를 마친 뒤 그 예외는 게시된 규칙에서 뺐습니다** (저장소 firestore.rules 도 예외 없음 = 게시본과 동일).
-  다시 복사하려면 콘솔에서 create 규칙의 작성자 조건을
-  `(request.resource.data.get('ownerUid', '') == request.auth.uid || (col == 'naite_reservations_beta' && (isAdmin() || isBetaAdmin())))` 로 잠시 바꿔 게시 → 아래 실행 → 원래대로 게시.
-  관리자로 로그인한 브라우저에서 베타 페이지를 열고, 정식 문서를 같은 id 로 베타에 `set` (베타에 이미 있는 id 는 건너뜀, `shareId` 는 빼고 복사).
-  원래 작성 기기에서는 베타 복사본도 수정할 수 있습니다.
-  - 2026-09-28 정식 208건 + 이후 추가된 8건(총 216건 전부)을 베타로 복사함 (정식은 읽기만, 변경 없음). 다시 맞출 때는 관리자 세션의 베타 페이지 콘솔에서:
-    ```js
-    const { getApp } = await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js');
-    const fs = await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js');
-    const db = fs.getFirestore(getApp('naite-beta'));
-    const have = new Set((await fs.getDocs(fs.collection(db, 'naite_reservations_beta'))).docs.map(d => d.id));
-    for (const d of (await fs.getDocs(fs.collection(db, 'naite_reservations'))).docs) {
-        if (have.has(d.id)) continue;
-        const { shareId, ...data } = d.data();
-        await fs.setDoc(fs.doc(db, 'naite_reservations_beta', d.id), data);
-    }
-    ```
+- 2026-10-23 베타의 화면·카카오 닉네임·로그·비밀번호 로그인 기능을 정식으로 승격했습니다.
+  정식 예약 컬렉션 naite_reservations의 기존 238건은 그대로 사용하며 베타 데이터를 복사하거나 덮어쓰지 않았습니다.
+- 정식은 Firebase 기본 앱을 유지해 기존 기기 UID를 보존하고, 베타는 naite-beta 앱으로 인증 상태를 분리합니다.
+  베타 예약은 naite_reservations_beta에 별도로 저장됩니다.
+- 카톡 채팅 OCR 패널·자동 처리는 중지했습니다. 정식 store에는 OCR API를 넣지 않았고 이전 처리기 소스는 beta/와 tools/에 보관합니다.
 - **카톡 닉네임 연동**: 배포 주소(https)에서 첫 방문 시(PC 포함) 안내창을 한 번 띄움 → [카카오톡 연동]이면 카카오 로그인
   (카톡 인앱은 동의 1회, PC 등은 카카오 로그인 화면 1회) → `/v1/api/talk/profile` 닉네임을 `naite_users/{uid}` 에 저장.
   [취소]하면 다시 묻지 않고 하단 [카톡 닉네임 연결] 안내. 연동 전에 [예약하기]를 누르면 다시 안내창.
@@ -60,9 +40,9 @@
   [이 날 기록 삭제]는 보고 있는 날짜의 기록만 지움(규칙: 관리자만 삭제). `[TEST]` 팀명(규칙 테스트)은 표시 안 함.
   기록은 앱이 남기는 것이라 규칙으로 강제하진 않음 (개발자 도구로 우회 가능). 규칙에서 기록을 확인하게 하면
   배치당 문서 조회 한도(20회) 때문에 60회 고정 예약 일괄 취소가 막히므로, 강제하려면 서버(Cloud Functions)가 필요.
-- 카카오 콘솔(앱 `naite res`): 카카오 로그인 ON, JS 키 리다이렉트 URI `https://gnu-naite.github.io/naite-reservation/beta/`,
+- 카카오 콘솔(앱 `naite res`): 카카오 로그인 ON, JS 키 리다이렉트 URI `https://gnu-naite.github.io/naite-reservation/` 및 `https://gnu-naite.github.io/naite-reservation/beta/`,
   닉네임 필수 동의. 토큰 교환은 JS 키로 브라우저에서 (클라이언트 시크릿은 REST 키에만 있어 손대지 않음).
-  `beta/config.js` 의 `KAKAO_JS_KEY`(공개 값). JS SDK 도메인에 `https://gnu-naite.github.io`, `http://localhost:5173`, `http://localhost:5174` 등록됨.
+  `config.js` 및 `beta/config.js` 의 `KAKAO_JS_KEY`(공개 값). JS SDK 도메인에 `https://gnu-naite.github.io`, `http://localhost:5173`, `http://localhost:5174` 등록됨.
 - 오늘 일정: 한 줄짜리 일정을 시간순으로 작은 화살표로 이음 (자정 넘긴 어제 예약 포함)
 - 편의: 기본 시간은 18시(오늘이면 지금) 이후 첫 빈 시간, 새 예약은 지난 시간 불가, 날짜 상세의 [이 날 예약],
   '내 예약 N건' 칩(이 기기에서 만든 예약), 자정 넘긴 예약을 다음 날 목록에도 표시, 수정 화면의 한 번↔고정 전환
@@ -70,13 +50,12 @@
   DB 에 남은 `naite_shares`, `naite_access` 문서는 규칙상 아무도 못 읽음 — 콘솔에서 컬렉션째 지워도 됨
 - 하단 [카톡 연동 해제] (연동된 기기에서만 보임): 닉네임을 비우고 첫 방문 안내도 다시 뜨게 함 (테스트·기기 정리용)
 
-## 정식 전환 체크리스트 (베타 → 루트)
+## 이후 정식 전환 시
 
-1. `beta/app.js · store.js · styles.css · index.html` 을 루트로 복사
-2. 루트 `index.html` 에서 베타 안내 배너(`beta-banner`) 블록 삭제, `?v=` 숫자 올리기
-3. `KAKAO_JS_KEY` 를 루트 `config.js` 로 옮김 (루트 `COLLECTION_NAME` 은 원래 정식이라 그대로)
-4. 규칙의 베타 전용 조건(isBeta: 카톡 연동·이름·인원수 선택)을 정식에도 적용하도록 바꿔 게시 — 정식 전환 전에 반드시 검토
-5. `beta/` 는 다음 테스트용으로 두거나 삭제
+- 정식 COLLECTION_NAME과 Firebase 기본 앱, 정식 카카오 리다이렉트 주소를 유지합니다.
+- 베타 배너는 정식에 넣지 않습니다. 바뀐 파일의 캐시 버전과 모듈 import 버전을 올립니다.
+- 예약 데이터 이동은 코드 승격과 별도 작업입니다. 명시적인 요청 없이 베타 예약을 정식에 복사하지 않습니다.
+- 공용 규칙 변경은 정식 권한에도 적용되므로 테스트 컬렉션으로 검사합니다.
 
 ## 로컬 실행·테스트
 
@@ -84,8 +63,10 @@
   Claude 데스크톱 앱은 [.claude/launch.json](.claude/launch.json) 의 `naite-preview` 로 바로 띄울 수 있습니다.
   (베타는 테스트 전용 예약표 `naite_reservations_beta` 를 씁니다. 카카오 닉네임 자동 연결은 https 배포 주소에서만)
 - 다른 기기 흉내: `localhost` 와 `127.0.0.1` 은 저장소가 분리돼 서로 다른 익명 uid 가 됩니다.
-- 보안 규칙 시나리오 테스트(실제 Firebase, 테스트 컬렉션 사용, 57건):
+- 정식 저장소 회귀 검사: `node --experimental-vm-modules tools/production-store.test.mjs`
+- 보안 규칙 시나리오 테스트(실제 Firebase, 테스트 컬렉션 사용):
   `cd tools/rules-test && npm install && npm test`
+- 관리자 권한 검사: `NAITE_BETA_ADMIN_PASSWORD` 환경변수를 설정하고 `node tools/rules-test/beta-admin.mjs`. 정식 예약에는 쓰지 않습니다.
   테스트 기기의 이름 문서(`naite_users`)와 기록(`naite_logs`, [TEST] 팀명이라 화면엔 안 보임)이 조금씩 남습니다
   (기록은 관리자 화면 [이 날 기록 삭제], 이름 문서는 콘솔에서 삭제 가능).
 

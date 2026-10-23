@@ -5,8 +5,7 @@ rules_version = '2';
 // Firebase 콘솔 > Firestore Database > [규칙] 탭에 그대로 붙여넣고 [게시]
 //
 // - 보기: 누구나
-// - 정식: 예약은 로그인(익명 포함)한 사용자, 수정·삭제는 작성자 본인 또는 관리자
-// - 베타: 예약·수정·삭제 모두 관리자 또는 카톡 닉네임을 연동한 기기(naite_users 의 kakaoNick) 누구나
+// - 정식·베타: 예약·수정·삭제 모두 관리자 또는 카톡 닉네임을 연동한 기기(naite_users 의 kakaoNick) 누구나
 //         예약자 이름·인원수 없이 예약 가능 (예약자는 카톡 닉네임으로 자동 기록)
 // - 예약의 editedBy: 마지막으로 추가·수정한 기기 uid (본인 uid 만 기록 가능)
 //
@@ -19,18 +18,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ▼ 관리자 UID 목록 — config.js 의 ADMIN_UIDS 와 똑같이 맞춰주세요.
+    // config.js의 기존 ADMIN_UIDS와 PASSWORD_ADMIN_UID. 비밀번호 자체는 Firebase Authentication에서 관리합니다.
     function adminUids() {
-      return ['l6wAZEj3oiXO3h4gX7Osq1jQOHH2'];
+      return ['l6wAZEj3oiXO3h4gX7Osq1jQOHH2', 'bOm29KxDcwMA3nmUcnvhSAC4Lf13'];
     }
 
     // 예약 컬렉션: 정식 + 베타 + 규칙 테스트용(정식과 같은 규칙, tools/rules-test 가 씀)
     function reservationCollections() {
       return ['naite_reservations', 'naite_reservations_beta', 'naite_reservations_test'];
-    }
-
-    function isBeta(col) {
-      return col == 'naite_reservations_beta';
     }
 
     function signedIn() {
@@ -41,16 +36,6 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in adminUids();
     }
 
-    // 베타 전용 비밀번호 계정 — 정식 예약의 관리자 권한은 없음.
-    function isBetaAdmin() {
-      return signedIn() && request.auth.uid == 'bOm29KxDcwMA3nmUcnvhSAC4Lf13';
-    }
-
-    // 기존(작성자 정보 없는) 예약은 관리자만 수정할 수 있습니다.
-    function isOwner() {
-      return signedIn() && resource.data.get('ownerUid', '') == request.auth.uid;
-    }
-
     // 카톡 닉네임을 연동한 기기 (닉네임은 기기가 스스로 저장하는 값 — 서버 검증 없음)
     function kakaoLinked() {
       return signedIn()
@@ -58,10 +43,9 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/naite_users/$(request.auth.uid)).data.get('kakaoNick', '') != '';
     }
 
-    // 수정·삭제 권한 — 베타: 관리자·카톡 연동 / 정식: 작성자·관리자
-    function canModify(col) {
-      return (isBeta(col) && (isAdmin() || isBetaAdmin() || kakaoLinked()))
-        || (!isBeta(col) && (isOwner() || isAdmin()));
+    // 작성 기기와 관계없이 관리자 또는 카톡 연동한 기기는 예약을 관리합니다.
+    function canManageReservations() {
+      return isAdmin() || kakaoLinked();
     }
 
     // editedBy 는 생략하거나(정식 화면) 본인 uid 만 기록할 수 있음
@@ -74,7 +58,7 @@ service cloud.firestore {
         || request.resource.data.get('editedBy', '') == request.auth.uid;
     }
 
-    // 공통 형식 — 예약자 이름·인원수는 있으면 검사 (베타는 둘 다 없어도 됨)
+    // 예약자 이름·인원수는 있으면 검사합니다. 기존 예약의 값은 그대로 보존합니다.
     function isValidCore(d) {
       return d.keys().hasAll(['date', 'startTime', 'endTime', 'teamName', 'purpose'])
         && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
@@ -86,43 +70,34 @@ service cloud.firestore {
         && d.purpose is string && d.purpose.size() <= 20;
     }
 
-    // 정식: 예약자 이름·인원수 필수
-    function isValidReservation(d) {
-      return isValidCore(d) && d.keys().hasAll(['userName', 'peopleCount']);
-    }
-
-    function isValidFor(col, d) {
-      return (isBeta(col) && isValidCore(d)) || (!isBeta(col) && isValidReservation(d));
-    }
-
     match /{col}/{docId} {
       allow read: if col in reservationCollections();
 
-      // 생성: 로그인 필수 + 작성자 uid 는 반드시 본인 (베타는 관리자이거나 카톡 연동한 기기만)
+      // 생성: 관리자 또는 카톡 연동한 기기 + 작성자 uid 는 반드시 본인
       //       예전 공유 링크 기능의 shareId 는 새로 붙일 수 없음
       allow create: if col in reservationCollections()
         && signedIn()
-        && (!isBeta(col) || isAdmin() || isBetaAdmin() || kakaoLinked())
-        && isValidFor(col, request.resource.data)
+        && canManageReservations()
+        && isValidCore(request.resource.data)
         && request.resource.data.ownerUid == request.auth.uid
         && !('shareId' in request.resource.data)
         && editedByOnCreate();
 
       // 수정: 작성자 정보와 (예전 예약에 남아 있는) shareId 는 바꿀 수 없음
       allow update: if col in reservationCollections()
-        && canModify(col)
-        && isValidFor(col, request.resource.data)
+        && canManageReservations()
+        && isValidCore(request.resource.data)
         && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['shareId'])
         && editedByOnUpdate();
 
       allow delete: if col in reservationCollections()
-        && canModify(col);
+        && canManageReservations();
     }
 
     // 기기별 표시 이름 — 본인만 쓰고, 본인과 관리자만 읽음 (닉네임은 기기가 스스로 적는 값)
     match /naite_users/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin() || isBetaAdmin());
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create, update: if signedIn() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['kakaoNick', 'name', 'updatedAt'])
         && request.resource.data.get('kakaoNick', '') is string
@@ -133,7 +108,7 @@ service cloud.firestore {
 
     // 예약 수정·취소 기록 — 본인 uid 로만 남기고, 서버 시각으로만, 관리자만 읽고 지움. 고칠 수 없음
     match /naite_logs/{id} {
-      allow read, delete: if isAdmin() || (isBetaAdmin() && isBeta(resource.data.col));
+      allow read, delete: if isAdmin();
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['action', 'uid', 'col', 'batch', 'at', 'res'])
         && request.resource.data.uid == request.auth.uid

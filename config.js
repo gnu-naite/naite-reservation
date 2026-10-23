@@ -36,12 +36,14 @@ export const DEFAULT_REPEAT_UNTIL = "2026-11-20";
 /** 고정 예약 1건이 만들 수 있는 최대 회차 수 (안전장치) */
 export const MAX_OCCURRENCES = 60;
 
-/**
- * 관리자 UID 목록 — 여기 있는 계정은 모든 예약을 수정/삭제할 수 있습니다.
- * 사이트 하단 [관리자 로그인]으로 구글 로그인하면 화면에 UID 가 표시됩니다.
- * 그 값을 여기와 firestore.rules 의 ADMIN_UIDS 두 곳에 똑같이 넣으세요.
- * (이메일 대신 UID 를 쓰는 이유: 저장소가 공개라 이메일이 노출되지 않게)
- */
+/** 기존 관리자 계정 — 로그인 상태와 과거 기록의 관리자 표시를 유지합니다. */
 export const ADMIN_UIDS = [
     "l6wAZEj3oiXO3h4gX7Osq1jQOHH2"
 ];
+
+// 화면에는 비밀번호만 입력합니다. 비밀번호는 Firebase에서 검증하며 소스에 저장하지 않습니다.
+export const PASSWORD_ADMIN_EMAIL = 'admin@beta.naite.invalid';
+export const PASSWORD_ADMIN_UID = 'bOm29KxDcwMA3nmUcnvhSAC4Lf13';
+
+/** 카카오 JavaScript 공개 키 — 정식·베타 리다이렉트 주소는 카카오 콘솔에 등록합니다. */
+export const KAKAO_JS_KEY = '6a20847a93503b12e90ebb8d3d94dc5e';
