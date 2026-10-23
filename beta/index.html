@@ -54,26 +54,6 @@
         </header>
 
         <main class="layout">
-            <section id="chatCard" class="card chat-card hidden">
-                <div class="card-head"><h2>카톡 자동 예약 · asdf 테스트</h2></div>
-                <p id="chatStatus" role="status">카카오톡 asdf 방과 OCR 처리기가 실행 중인 PC에서 연결하세요. 이 공유 페이지를 켜두면 예약을 자동 반영합니다. API 키는 PC에만 저장합니다.</p>
-                <button id="chatConnect" type="button" class="secondary-btn" disabled>이 PC의 OCR 연결</button>
-                <div id="chatControls" class="hidden">
-                    <div class="chat-settings">
-                        <label class="field">내 카톡 닉네임 (본인 말풍선용)<input id="chatNickname" maxlength="20" autocomplete="off"></label>
-                        <label class="field">위 제외 높이 (px)<input id="chatTop" type="number" min="0" max="300" value="78"></label>
-                        <label class="field">아래 제외 높이 (px)<input id="chatBottom" type="number" min="0" max="500" value="150"></label>
-                    </div>
-                    <p>asdf 창을 대화 맨 아래에 두세요. 다른 창에 가려져도 캡처할 수 있지만 최소화하면 인식을 보류합니다. 위 여백은 날짜·닉네임을, 아래 여백은 메시지를 자르지 않게 맞춰 주세요.</p>
-                    <div class="chat-buttons">
-                        <button type="button" class="primary-btn" data-chat-control="start">새 메시지 자동 처리 시작</button>
-                        <button type="button" class="secondary-btn" data-chat-control="stop">중지</button>
-                        <button type="button" class="secondary-btn" data-chat-control="scan">현재 화면도 읽기</button>
-                    </div>
-                    <details class="chat-preview"><summary>캡처 영역 확인</summary><img id="chatPreview" alt="asdf 채팅방의 OCR 대상 영역"></details>
-                    <ul id="chatEvents" class="chat-events"></ul>
-                </div>
-            </section>
             <!-- ===== 오늘 일정 ===== -->
             <section class="card upcoming">
                 <div class="card-head">
@@ -335,7 +315,7 @@
 
     <div id="toastArea" class="toast-area"></div>
 
-    <script type="module" src="app.js?v=31"></script>
+    <script type="module" src="app.js?v=32"></script>
 </body>
 
 </html>
