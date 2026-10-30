@@ -804,9 +804,10 @@ function renderMine() {
 }
 
 function userLabel(uid) {
-    if (uid === PASSWORD_ADMIN_UID || ADMIN_UIDS.includes(uid)) return t('log.admin');
     const u = users.get(uid);
-    return [u?.kakaoNick, u?.name].filter(Boolean).join(' / ') || (uid ? uid.slice(0, 6) : '?');
+    if (u?.kakaoNick) return u.kakaoNick;
+    if (uid === PASSWORD_ADMIN_UID || ADMIN_UIDS.includes(uid)) return t('log.admin');
+    return u?.name || (uid ? uid.slice(0, 6) : '?');
 }
 
 /* ---------- 고정(매주 반복) 예약 ---------- */
