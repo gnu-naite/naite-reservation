@@ -8,7 +8,7 @@
      store.write(ops)     추가·수정·삭제를 한 번에 (원자적으로) 저장
    ============================================================ */
 
-import { FIREBASE_CONFIG, COLLECTION_NAME, PASSWORD_ADMIN_EMAIL, PASSWORD_ADMIN_UID } from './config.js?v=3';
+import { FIREBASE_CONFIG, COLLECTION_NAME, PASSWORD_ADMIN_EMAIL, PASSWORD_ADMIN_UID } from './config.js?v=4';
 
 const FIREBASE_VERSION = '12.19.0';
 // 컬렉션별로 따로 저장 (정식: naite_reservations_local 그대로, 베타는 분리)

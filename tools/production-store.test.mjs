@@ -68,7 +68,7 @@ const module = new vm.SourceTextModule(source, { context, importModuleDynamicall
     };
     const linked = synthetic(values); await linked.link(() => {}); await linked.evaluate(); return linked;
 } });
-await module.link(specifier => { assert.equal(specifier, './config.js?v=3'); return synthetic(config); });
+await module.link(specifier => { assert.equal(specifier, './config.js?v=4'); return synthetic(config); });
 await module.evaluate();
 const store = await module.namespace.createStore(() => {});
 assert.equal(store.mode, 'cloud');

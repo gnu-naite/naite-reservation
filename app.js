@@ -2,8 +2,8 @@
    나이테 동아리방 예약 — 메인 로직
    ============================================================ */
 
-import { createStore, randomToken } from './store.js?v=12';
-import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, PASSWORD_ADMIN_UID, KAKAO_JS_KEY } from './config.js?v=3';
+import { createStore, randomToken } from './store.js?v=13';
+import { CLUB, DEFAULT_REPEAT_UNTIL, MAX_OCCURRENCES, ADMIN_UIDS, PASSWORD_ADMIN_UID, KAKAO_JS_KEY } from './config.js?v=4';
 
 /* ---------- i18n 사전 ---------- */
 const I18N = {
@@ -456,6 +456,11 @@ function fmtDate(d) {
     return `${y}-${m}-${day}`;
 }
 
+/** 고정 예약의 기본 종료일. 그 날짜가 지났으면 빈칸 (config.js 의 날짜를 새로 정할 때까지 직접 고르게 함) */
+function defaultRepeatUntil() {
+    return fmtDate(new Date()) <= DEFAULT_REPEAT_UNTIL ? DEFAULT_REPEAT_UNTIL : '';
+}
+
 /** 'YYYY-MM-DD' → Date (로컬 자정) */
 function parseDate(s) {
     const [y, m, d] = s.split('-').map(Number);
@@ -855,7 +860,7 @@ function setResType(type) {
     el.dateLabel.textContent = t(makingSeries ? 'modal.labelFirstDate' : 'modal.labelDate');
 
     if (makingSeries && !el.repeatUntil.value) {
-        el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
+        el.repeatUntil.value = defaultRepeatUntil();
     }
 
     if (editing?.seriesId) {
@@ -1005,7 +1010,7 @@ function openCreate(date) {
     el.form.reset();
     el.date.value = fmtDate(date);
     el.date.min = fmtDate(new Date());
-    el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
+    el.repeatUntil.value = defaultRepeatUntil();
     setResType('once');
 
     el.modalTitle.textContent = t('modal.newResTitle');
@@ -1020,7 +1025,7 @@ function openEdit(res) {
     el.date.min = '';
     $('teamName').value = res.teamName;
     $('purpose').value = res.purpose;
-    el.repeatUntil.value = res.repeatUntil || DEFAULT_REPEAT_UNTIL;
+    el.repeatUntil.value = res.repeatUntil || defaultRepeatUntil();
     setResType(res.seriesId ? 'weekly' : 'once');
 
     refreshTimeOptions();
@@ -1043,7 +1048,7 @@ function closeReservationModal() {
     Array.from(el.end.options).forEach(o => (o.disabled = false));
     el.start.value = '18:00';
     el.end.value = '20:00';
-    el.repeatUntil.value = DEFAULT_REPEAT_UNTIL;
+    el.repeatUntil.value = defaultRepeatUntil();
     setResType('once');
 }
 
